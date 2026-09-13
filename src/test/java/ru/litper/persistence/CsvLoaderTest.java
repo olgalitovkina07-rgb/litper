@@ -24,6 +24,37 @@ class CsvLoaderTest {
     private final CsvLoader loader = new CsvLoader();
 
     @Test
+    void loadsValidFixtureFromClasspath() throws Exception {
+        try (var in = getClass().getResourceAsStream("/contacts.csv")) {
+            Path file = writeToTemp(in);
+
+            CsvLoadResult result = loader.load(file);
+
+            assertEquals(4, result.contacts().size());
+            assertEquals(0, result.skippedLines());
+            assertEquals("Иван Иванов", result.contacts().get(0).getName());
+        }
+    }
+
+    @Test
+    void loadsBrokenFixtureFromClasspathSkippingBadRows() throws Exception {
+        try (var in = getClass().getResourceAsStream("/broken-contacts.csv")) {
+            Path file = writeToTemp(in);
+
+            CsvLoadResult result = loader.load(file);
+
+            assertEquals(2, result.contacts().size());
+            assertEquals(3, result.skippedLines());
+        }
+    }
+
+    private static Path writeToTemp(java.io.InputStream in) throws IOException {
+        Path file = Files.createTempFile("csv", ".csv");
+        Files.copy(in, file, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+        return file;
+    }
+
+    @Test
     void parsesCorporateLine() throws Exception {
         Contact contact = loader.parseLine(
                 "corporate;Иван Иванов;+79990000000;ivan@example.com;ООО Ромашка;Инженер;123", 2);

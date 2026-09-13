@@ -21,7 +21,6 @@ val javafxPlatform = when {
 }
 
 dependencies {
-    implementation("org.openjfx:javafx-controls:$javafxVersion")
     implementation("org.openjfx:javafx-base:$javafxVersion:$javafxPlatform")
     implementation("org.openjfx:javafx-graphics:$javafxVersion:$javafxPlatform")
     implementation("org.openjfx:javafx-controls:$javafxVersion:$javafxPlatform")
@@ -31,8 +30,15 @@ dependencies {
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
 
+java {
+    modularity.inferModulePath.set(true)
+}
+
 application {
     mainClass = "ru.litper.Main"
+    mainModule = "ru.litper"
+    // Отключаем предупреждение о нативном доступе из модуля JavaFX.
+    applicationDefaultJvmArgs = listOf("--enable-native-access=javafx.graphics")
 }
 
 tasks.test {
