@@ -1,0 +1,6 @@
+type;name;phone;email;organization;position;internalNumber
+corporate;Денис;+79000000001;denis@example.com;ООО Тест;Программист;100
+corporate;Битая строка без нужных полей
+emergency;Полиция;102;;МВД;;
+widget;Кто-то;999;;;
+corporate;Анна;+79000000002;;;Менеджер;абв
