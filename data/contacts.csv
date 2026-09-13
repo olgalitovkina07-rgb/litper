@@ -1,0 +1,5 @@
+type;name;phone;email;organization;position;internalNumber
+corporate;Иван Иванов;+79990000000;ivan@example.com;ООО Ромашка;Инженер;123
+corporate;Мария Петрова;+79991112233;maria@example.com;ООО Ромашка;Менеджер;456
+emergency;Пожарная служба;101;;МЧС;;
+emergency;Скорая помощь;103;;МЧС;;
