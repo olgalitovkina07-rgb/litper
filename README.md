@@ -24,6 +24,12 @@ gradlew.bat run        # Windows
 ```
 
 Проект также можно открыть и запустить в IntelliJ IDEA: `Main.java` → «Run».
+Нужная VM-опция уже прописана в `.idea/runConfigurations/Main.xml`
+(`--enable-native-access=javafx.graphics`).
+
+> Если при запуске появляется предупреждение про `System::load` / native access —
+> добавь в Run Configuration (Run → Edit Configurations → VM options):
+> `--enable-native-access=javafx.graphics`
 
 ## Формат CSV
 
