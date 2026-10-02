@@ -12,6 +12,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.LongConsumer;
 
 /**
  * Читает справочник контактов из CSV.
@@ -26,6 +27,9 @@ public final class CsvLoader {
 
     private static final int FIELD_COUNT = 7;
     private static final String HEADER = "type;name;phone;email;organization;position;internalNumber";
+
+    /** Как часто сообщать прогресс загрузки (строк). */
+    private static final int PROGRESS_STEP = 200;
 
     private static final int IDX_TYPE = 0;
     private static final int IDX_NAME = 1;
@@ -43,6 +47,23 @@ public final class CsvLoader {
      * @throws IOException если файл нельзя прочитать
      */
     public CsvLoadResult load(Path file) throws IOException {
+        return load(file, null);
+    }
+
+    /**
+     * Загружает все контакты из файла, сообщая прогресс.
+     *
+     * <p>Метод вызывается из фонового потока (GUI загружает большой файл через
+     * {@code javafx.concurrent.Task}), поэтому прогресс — обычный callback,
+     * а не обращения к JavaFX.</p>
+     *
+     * @param file     путь к CSV-файлу
+     * @param progress получает количество уже прочитанных строк; может быть {@code null}
+     * @return результат загрузки с контактами и количеством пропущенных строк
+     * @throws IOException если файл нельзя прочитать
+     */
+    public CsvLoadResult load(Path file, LongConsumer progress) throws IOException {
+        // Список здесь — только временный буфер разбора, результат отдаётся массивом.
         List<Contact> contacts = new ArrayList<>();
         int skipped = 0;
 
@@ -63,9 +84,22 @@ public final class CsvLoader {
                     skipped++;
                     System.err.println(e.getMessage());
                 }
+                if (progress != null && lineNumber % PROGRESS_STEP == 0) {
+                    progress.accept(lineNumber);
+                }
             }
         }
-        return new CsvLoadResult(contacts, skipped);
+        if (progress != null) {
+            progress.accept(countLines(file));
+        }
+        return new CsvLoadResult(contacts.toArray(new Contact[0]), skipped);
+    }
+
+    /** Всего строк в файле — нужно, чтобы прогресс был определённым, а не бесконечным. */
+    public long countLines(Path file) throws IOException {
+        try (var lines = Files.lines(file, StandardCharsets.UTF_8)) {
+            return lines.count();
+        }
     }
 
     /**

@@ -1,50 +1,113 @@
 package ru.litper.service;
 
 import ru.litper.model.Contact;
+import ru.litper.structure.KeyExtractor;
+import ru.litper.structure.Trie;
 
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.List;
+import java.util.Locale;
 
 /**
- * Хранилище контактов и операции над ними.
+ * Справочник контактов: хранилище и операции над ним.
  *
- * <p>Не зависит от JavaFX: GUI работает с сервисом, а не хранит бизнес-логику в контроллере.</p>
+ * <p>Основное хранилище — собственное префиксное дерево {@link Trie} по имени
+ * (начиная с лабораторной №2 списки как хранилище запрещены). Ключ индексации —
+ * имя в нижнем регистре, поэтому поиск и автодополнение не зависят от регистра,
+ * а в дереве попадают вместе «Иван» и «ИВАН».</p>
+ *
+ * <p>Важно: класс {@link Contact} изменяемый, поэтому имя контакта, уже лежащего
+ * в дереве, нельзя менять напрямую — индекс разойдётся с данными. Для правки имени
+ * используйте {@link #update(Contact, Contact)}.</p>
+ *
+ * <p>Класс не зависит от JavaFX: фоновые потоки пишут в дерево, GUI-поток читает
+ * снимки {@link #getAll()}.</p>
  */
 public class ContactService {
 
-    private final List<Contact> contacts = new ArrayList<>();
+    /** Ключ индексации: имя приводится к нижнему регистру. */
+    private static final KeyExtractor<Contact> BY_NAME =
+            contact -> contact.getName().toLowerCase(Locale.ROOT);
 
-    /** Возвращает неизменяемое представление списка контактов. */
-    public List<Contact> getAll() {
-        return Collections.unmodifiableList(contacts);
+    private final Trie<Contact> index = new Trie<>(Contact.class, BY_NAME);
+
+    /** Само дерево — нужно визуализации. Наружу отдаётся только для чтения. */
+    public Trie<Contact> index() {
+        return index;
+    }
+
+    /** Алфавитный снимок всех контактов (неизменяемый массив). */
+    public Contact[] getAll() {
+        return index.toArray();
     }
 
     public void add(Contact contact) {
-        contacts.add(contact);
+        index.insert(contact);
     }
 
-    public void addAll(Collection<Contact> newContacts) {
-        contacts.addAll(newContacts);
+    /** Добавляет сгенерированный или загруженный набор контактов. */
+    public void addAll(Contact[] contacts) {
+        for (Contact contact : contacts) {
+            index.insert(contact);
+        }
     }
 
-    /** Заменяет контакт по позиции (используется при редактировании). */
-    public void replace(int index, Contact replacement) {
-        contacts.set(index, replacement);
+    /**
+     * Заменяет контакт (в том числе при смене имени: старое имя удаляется из индекса).
+     *
+     * @param original контакт, сейчас лежащий в дереве
+     * @param updated  новая версия контакта
+     * @return {@code true}, если исходный контакт найден и заменён
+     */
+    public boolean update(Contact original, Contact updated) {
+        if (!index.remove(original)) {
+            return false;
+        }
+        index.insert(updated);
+        return true;
     }
 
-    /** Полностью заменяет содержимое справочника (используется при загрузке CSV). */
-    public void replaceAll(Collection<Contact> newContacts) {
-        contacts.clear();
-        contacts.addAll(newContacts);
+    public boolean remove(Contact contact) {
+        return index.remove(contact);
+    }
+
+    /** Полностью заменяет содержимое справочника (загрузка CSV, генерация). */
+    public void replaceAll(Contact[] contacts) {
+        index.clear();
+        addAll(contacts);
     }
 
     public void clear() {
-        contacts.clear();
+        index.clear();
     }
 
     public int size() {
-        return contacts.size();
+        return index.size();
+    }
+
+    /** Точный поиск по имени (регистр не важен). */
+    public Contact[] findByName(String name) {
+        return index.findAll(normalize(name));
+    }
+
+    /** Автодополнение по префиксу имени. */
+    public Contact[] suggest(String prefix, int limit) {
+        return index.autocomplete(normalize(prefix), limit);
+    }
+
+    /** Сколько контактов в поддереве префикса. */
+    public int countByPrefix(String prefix) {
+        return index.countByPrefix(normalize(prefix));
+    }
+
+    /** Удаляет все контакты, имена которых начинаются с префикса. */
+    public int removeByPrefix(String prefix) {
+        String normalized = normalize(prefix);
+        if (normalized.isEmpty()) {
+            throw new IllegalArgumentException("Префикс не должен быть пустым");
+        }
+        return index.removePrefix(normalized);
+    }
+
+    private static String normalize(String value) {
+        return value == null ? "" : value.trim().toLowerCase(Locale.ROOT);
     }
 }

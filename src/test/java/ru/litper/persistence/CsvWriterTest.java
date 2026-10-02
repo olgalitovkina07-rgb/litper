@@ -20,27 +20,29 @@ class CsvWriterTest {
     @Test
     void savedFileCanBeLoadedBack(@TempDir Path dir) throws IOException {
         Path file = dir.resolve("roundtrip.csv");
-        List<Contact> contacts = List.of(
+        Contact[] contacts = {
                 new CorporateContact("Иван Иванов", "+7999", "i@e.ru",
                         "ООО Ромашка", "Инженер", "123"),
-                new EmergencyContact("Пожарная служба", "101", "", "МЧС"));
+                new EmergencyContact("Пожарная служба", "101", "", "МЧС")
+        };
 
         new CsvWriter().write(file, contacts);
         CsvLoadResult result = new CsvLoader().load(file);
 
-        assertEquals(2, result.contacts().size());
+        assertEquals(2, result.contacts().length);
         assertEquals(0, result.skippedLines());
-        assertEquals("Иван Иванов", result.contacts().get(0).getName());
-        assertEquals("Пожарная служба", result.contacts().get(1).getName());
+        assertEquals("Иван Иванов", result.contacts()[0].getName());
+        assertEquals("Пожарная служба", result.contacts()[1].getName());
     }
 
     @Test
     void fileStartsWithHeader(@TempDir Path dir) throws IOException {
         Path file = dir.resolve("out.csv");
-        new CsvWriter().write(file, List.of());
+        new CsvWriter().write(file, new Contact[0]);
 
         List<String> lines = Files.readAllLines(file, StandardCharsets.UTF_8);
+        String header = lines.get(0);
 
-        assertTrue(lines.get(0).startsWith("type;name;phone;email;organization;position;internalNumber"));
+        assertTrue(header.startsWith("type;name;phone;email;organization;position;internalNumber"));
     }
 }

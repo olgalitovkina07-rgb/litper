@@ -10,7 +10,6 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.List;
 
 /**
  * Сохраняет справочник контактов в CSV в том же формате,
@@ -20,7 +19,7 @@ public final class CsvWriter {
 
     private static final String HEADER = "type;name;phone;email;organization;position;internalNumber";
 
-    public void write(Path file, List<Contact> contacts) throws IOException {
+    public void write(Path file, Contact[] contacts) throws IOException {
         try (BufferedWriter writer = Files.newBufferedWriter(file, StandardCharsets.UTF_8)) {
             writer.write(HEADER);
             writer.newLine();
