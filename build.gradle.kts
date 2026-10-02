@@ -68,3 +68,15 @@ tasks.register<JavaExec>("raceDemo") {
     mainClass = "ru.litper.structure.RaceDemo"
     javaLauncher = javaToolchains.launcherFor(java.toolchain)
 }
+
+/**
+ * Большой тестовый CSV для ручной проверки приложения.
+ * Запуск: gradlew.bat sampleCsv [количество] [путь]
+ */
+tasks.register<JavaExec>("sampleCsv") {
+    group = "verification"
+    description = "Создаёт data/contacts-large.csv для проверки загрузки и визуализации"
+    classpath = sourceSets["test"].runtimeClasspath
+    mainClass = "ru.litper.persistence.SampleDataWriter"
+    javaLauncher = javaToolchains.launcherFor(java.toolchain)
+}
