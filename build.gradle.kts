@@ -44,3 +44,27 @@ application {
 tasks.test {
     useJUnitPlatform()
 }
+
+/**
+ * Замеры для отчёта: собственное Trie против TreeMap из java.util.
+ * Запуск: gradlew.bat benchmark
+ */
+tasks.register<JavaExec>("benchmark") {
+    group = "verification"
+    description = "Сравнение собственного префиксного дерева с аналогом из java.util"
+    classpath = sourceSets["test"].runtimeClasspath
+    mainClass = "ru.litper.structure.TrieBenchmark"
+    javaLauncher = javaToolchains.launcherFor(java.toolchain)
+}
+
+/**
+ * Демонстрация гонки потоков для отчёта.
+ * Запуск: gradlew.bat raceDemo
+ */
+tasks.register<JavaExec>("raceDemo") {
+    group = "verification"
+    description = "Демонстрация гонки потоков без синхронизации и защиты в Trie"
+    classpath = sourceSets["test"].runtimeClasspath
+    mainClass = "ru.litper.structure.RaceDemo"
+    javaLauncher = javaToolchains.launcherFor(java.toolchain)
+}

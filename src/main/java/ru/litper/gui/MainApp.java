@@ -17,8 +17,8 @@ public class MainApp extends Application {
     @Override
     public void start(Stage stage) {
         MainController controller = new MainController(new ContactService());
-        Scene scene = new Scene(controller.getView(), 950, 600);
-        stage.setTitle("Справочник контактов — вариант 4");
+        Scene scene = new Scene(controller.getView(), 1360, 760);
+        stage.setTitle("Справочник контактов — вариант 4 (Trie)");
         stage.setScene(scene);
         stage.show();
     }

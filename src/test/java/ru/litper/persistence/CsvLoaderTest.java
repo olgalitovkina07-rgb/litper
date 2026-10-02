@@ -30,9 +30,9 @@ class CsvLoaderTest {
 
             CsvLoadResult result = loader.load(file);
 
-            assertEquals(4, result.contacts().size());
+            assertEquals(4, result.contacts().length);
             assertEquals(0, result.skippedLines());
-            assertEquals("Иван Иванов", result.contacts().get(0).getName());
+            assertEquals("Иван Иванов", result.contacts()[0].getName());
         }
     }
 
@@ -43,7 +43,7 @@ class CsvLoaderTest {
 
             CsvLoadResult result = loader.load(file);
 
-            assertEquals(2, result.contacts().size());
+            assertEquals(2, result.contacts().length);
             assertEquals(3, result.skippedLines());
         }
     }
@@ -113,10 +113,10 @@ class CsvLoaderTest {
 
         CsvLoadResult result = loader.load(file);
 
-        assertEquals(2, result.contacts().size());
+        assertEquals(2, result.contacts().length);
         assertEquals(2, result.skippedLines());
-        assertInstanceOf(CorporateContact.class, result.contacts().get(0));
-        assertInstanceOf(EmergencyContact.class, result.contacts().get(1));
+        assertInstanceOf(CorporateContact.class, result.contacts()[0]);
+        assertInstanceOf(EmergencyContact.class, result.contacts()[1]);
     }
 
     @Test
@@ -126,7 +126,7 @@ class CsvLoaderTest {
 
         CsvLoadResult result = loader.load(file);
 
-        assertEquals(0, result.contacts().size());
+        assertEquals(0, result.contacts().length);
         assertEquals(0, result.skippedLines());
     }
 }
