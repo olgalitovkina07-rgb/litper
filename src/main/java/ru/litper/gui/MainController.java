@@ -25,10 +25,15 @@ import ru.litper.model.EmergencyContact;
 import ru.litper.persistence.CsvLoadResult;
 import ru.litper.persistence.CsvLoader;
 import ru.litper.persistence.CsvWriter;
+import ru.litper.persistence.serialize.ContactData;
+import ru.litper.persistence.serialize.ContactSerializers;
+import ru.litper.persistence.serialize.Serializer;
 import ru.litper.service.ContactGenerator;
 import ru.litper.service.ContactService;
 
 import java.io.File;
+import java.nio.file.Path;
+import java.util.Locale;
 import java.util.Optional;
 import java.util.function.Function;
 
@@ -44,6 +49,10 @@ public class MainController {
 
     private static final FileChooser.ExtensionFilter CSV_FILTER =
             new FileChooser.ExtensionFilter("CSV-файл", "*.csv");
+    private static final FileChooser.ExtensionFilter JSON_FILTER =
+            new FileChooser.ExtensionFilter("JSON-файл", "*.json");
+    private static final FileChooser.ExtensionFilter BINARY_FILTER =
+            new FileChooser.ExtensionFilter("Бинарный файл", "*.bin");
 
     /** Сколько подсказок показывать в панели автодополнения. */
     private static final int SUGGESTION_LIMIT = 50;
@@ -60,6 +69,8 @@ public class MainController {
 
     private final Button loadButton = new Button("Загрузить CSV");
     private final Button saveButton = new Button("Сохранить CSV");
+    private final Button exportButton = new Button("Экспорт");
+    private final Button importButton = new Button("Импорт");
     private final Button addButton = new Button("Добавить");
     private final Button editButton = new Button("Изменить");
     private final Button generateButton = new Button("Сгенерировать");
@@ -96,9 +107,13 @@ public class MainController {
         addButton.setTooltip(new Tooltip("Добавить можно только редактируемый тип (корпоративный)"));
         generateButton.setTooltip(new Tooltip("Сгенерировать набор данных для дерева"));
         clearButton.setTooltip(new Tooltip("Полностью очистить дерево"));
+        exportButton.setTooltip(new Tooltip("Экспорт в JSON или бинарный формат (лаб. 3)"));
+        importButton.setTooltip(new Tooltip("Импорт из JSON или бинарного формата (лаб. 3)"));
 
         loadButton.setOnAction(e -> onLoadCsv());
         saveButton.setOnAction(e -> onSaveCsv());
+        exportButton.setOnAction(e -> onExport());
+        importButton.setOnAction(e -> onImport());
         addButton.setOnAction(e -> onAddContact());
         editButton.setOnAction(e -> onEditContact());
         generateButton.setOnAction(e -> onGenerate());
@@ -107,8 +122,8 @@ public class MainController {
         HBox spacer = new HBox();
         HBox.setHgrow(spacer, Priority.ALWAYS);
 
-        HBox toolbar = new HBox(8, loadButton, saveButton, addButton, editButton,
-                generateButton, clearButton, spacer,
+        HBox toolbar = new HBox(8, loadButton, saveButton, exportButton, importButton,
+                addButton, editButton, generateButton, clearButton, spacer,
                 taskRunner.getProgressBar(), taskRunner.getCancelButton());
         toolbar.setPadding(new Insets(10));
         toolbar.setAlignment(javafx.geometry.Pos.CENTER_LEFT);
@@ -216,6 +231,75 @@ public class MainController {
         };
         runInBackground(task, "Ошибка сохранения CSV", () ->
                 setStatus("Сохранено контактов: " + task.getValue()));
+    }
+
+    // экспорт и импорт (лаб. 3)
+
+    private void onExport() {
+        FileChooser chooser = buildDataChooser("Экспорт справочника", JSON_FILTER, BINARY_FILTER);
+        File file = chooser.showSaveDialog(root.getScene().getWindow());
+        if (file == null) {
+            return;
+        }
+        Serializer<ContactData> serializer = serializerFor(chooser.getSelectedExtensionFilter());
+        Path target = withExtension(file.toPath(), serializer.fileExtension());
+
+        Task<Integer> task = new Task<>() {
+            @Override
+            protected Integer call() throws Exception {
+                Contact[] contacts = service.getAll();
+                serializer.save(ContactData.of(contacts), target);
+                return contacts.length;
+            }
+        };
+        runInBackground(task, "Ошибка экспорта", () ->
+                setStatus("Экспортировано в " + serializer.format() + ": "
+                        + task.getValue() + " контактов (" + target.getFileName() + ")"));
+    }
+
+    private void onImport() {
+        FileChooser chooser = buildDataChooser("Импорт справочника", JSON_FILTER, BINARY_FILTER);
+        File file = chooser.showOpenDialog(root.getScene().getWindow());
+        if (file == null) {
+            return;
+        }
+        Serializer<ContactData> serializer = ContactSerializers.forFile(file.toPath());
+
+        Task<Contact[]> task = new Task<>() {
+            @Override
+            protected Contact[] call() throws Exception {
+                return serializer.load(file.toPath()).toContacts();
+            }
+        };
+        runInBackground(task, "Ошибка импорта", () -> {
+            Contact[] contacts = task.getValue();
+            service.replaceAll(contacts);
+            triePanel.setPrefix("");
+            triePanel.setSuggestions(new String[0]);
+            refreshAll();
+            setStatus("Импортировано из " + serializer.format() + ": " + contacts.length + " контактов");
+        });
+    }
+
+    private static FileChooser buildDataChooser(String title, FileChooser.ExtensionFilter... filters) {
+        FileChooser chooser = new FileChooser();
+        chooser.setTitle(title);
+        chooser.getExtensionFilters().addAll(filters);
+        return chooser;
+    }
+
+    /** Формат для сохранения: по выбранному фильтру, по умолчанию — JSON. */
+    private static Serializer<ContactData> serializerFor(FileChooser.ExtensionFilter selected) {
+        return selected == BINARY_FILTER ? ContactSerializers.binary() : ContactSerializers.json();
+    }
+
+    /** Добавляет расширение по формату, если пользователь его не ввёл. */
+    private static Path withExtension(Path file, String extension) {
+        String name = file.getFileName().toString().toLowerCase(Locale.ROOT);
+        if (name.endsWith("." + extension)) {
+            return file;
+        }
+        return file.resolveSibling(file.getFileName() + "." + extension);
     }
 
     private void onAddContact() {
@@ -384,6 +468,8 @@ public class MainController {
     private void setBusy(boolean busy) {
         loadButton.setDisable(busy);
         saveButton.setDisable(busy);
+        exportButton.setDisable(busy);
+        importButton.setDisable(busy);
         addButton.setDisable(busy);
         editButton.setDisable(busy || !(table.getSelectionModel().getSelectedItem() instanceof Editable));
         generateButton.setDisable(busy);

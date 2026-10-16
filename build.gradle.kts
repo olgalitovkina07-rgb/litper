@@ -11,6 +11,7 @@ repositories {
 }
 
 val javafxVersion = "25.0.2"
+val jacksonVersion = "2.18.2"
 
 val osName = System.getProperty("os.name").lowercase()
 val javafxPlatform = when {
@@ -24,6 +25,8 @@ dependencies {
     implementation("org.openjfx:javafx-base:$javafxVersion:$javafxPlatform")
     implementation("org.openjfx:javafx-graphics:$javafxVersion:$javafxPlatform")
     implementation("org.openjfx:javafx-controls:$javafxVersion:$javafxPlatform")
+
+    implementation("com.fasterxml.jackson.core:jackson-databind:$jacksonVersion")
 
     testImplementation(platform("org.junit:junit-bom:5.11.4"))
     testImplementation("org.junit.jupiter:junit-jupiter")
@@ -79,4 +82,17 @@ tasks.register<JavaExec>("sampleCsv") {
     classpath = sourceSets["test"].runtimeClasspath
     mainClass = "ru.litper.persistence.SampleDataWriter"
     javaLauncher = javaToolchains.launcherFor(java.toolchain)
+}
+
+/**
+ * Сравнение форматов сериализации для отчёта (лаб. 3): JSON против бинарного.
+ * Запуск: gradlew.bat serializationBench [-Pcount=50000]
+ */
+tasks.register<JavaExec>("serializationBench") {
+    group = "verification"
+    description = "Размер файлов и время сохранения/загрузки JSON и бинарного формата"
+    classpath = sourceSets["test"].runtimeClasspath
+    mainClass = "ru.litper.persistence.serialize.SerializationBench"
+    javaLauncher = javaToolchains.launcherFor(java.toolchain)
+    (findProperty("count") as String?)?.let { args = listOf(it) }
 }

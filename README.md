@@ -1,10 +1,11 @@
 # Справочник контактов
 
-Лабораторные работы №1–2, **вариант 4 «Справочник контактов»**.
+Лабораторные работы №1–3, **вариант 4 «Справочник контактов»**.
 
 JavaFX-приложение для ведения справочника контактов: загрузка и сохранение CSV,
 отображение в таблице, добавление и редактирование контактов, **собственное
-префиксное дерево (Trie) по имени** с визуализацией и асинхронными операциями.
+префиксное дерево (Trie) по имени** с визуализацией и асинхронными операциями,
+а также **экспорт и импорт в JSON и собственный бинарный формат**.
 
 ## Требования
 
@@ -28,10 +29,14 @@ gradlew.bat run        # Windows
 Замеры и эксперименты из отчёта:
 
 ```bash
-gradlew.bat benchmark   # своё Trie против TreeMap из java.util (10^4 и 10^5)
-gradlew.bat raceDemo    # гонка потоков без синхронизации и защита в Trie
-gradlew.bat sampleCsv   # большой тестовый файл data/contacts-large.csv
+gradlew.bat benchmark          # своё Trie против TreeMap из java.util (10^4 и 10^5)
+gradlew.bat raceDemo           # гонка потоков без синхронизации и защита в Trie
+gradlew.bat sampleCsv          # большой тестовый файл data/contacts-large.csv
+gradlew.bat serializationBench # сравнение JSON и бинарного формата (лаб. 3)
 ```
+
+Для `serializationBench` число записей задаётся свойством `count`:
+`gradlew.bat serializationBench -Pcount=50000`.
 
 Проект также можно открыть и запустить в IntelliJ IDEA: `Main.java` → «Run».
 Нужная VM-опция уже прописана в `.idea/runConfigurations/Main.xml`
@@ -53,9 +58,11 @@ gradlew.bat sampleCsv   # большой тестовый файл data/contacts
 | Визуализация дерева на `Canvas` с подсветкой посещённых узлов | №2 |
 | Генерация данных, фоновая загрузка с прогрессом и отменой | №2 |
 | Замеры, сравнение с `java.util`, конкурентный доступ | №2 |
+| Экспорт/импорт JSON и бинарного формата через `FileChooser` | №3 |
+| Общий интерфейс `Serializer`, версия схемы, roundtrip-тесты | №3 |
 
-Кнопки: «Загрузить CSV», «Сохранить CSV», «Добавить», «Изменить», «Сгенерировать»,
-«Очистить», «Отменить» + прогресс-бар.
+Кнопки: «Загрузить CSV», «Сохранить CSV», «Экспорт», «Импорт», «Добавить»,
+«Изменить», «Сгенерировать», «Очистить», «Отменить» + прогресс-бар.
 
 Правая панель — визуализация дерева: поле префикса, кнопки «Найти»,
 «Удалить по имени», «Удалить по префиксу», список подсказок автодополнения,
@@ -99,15 +106,72 @@ emergency;Пожарная служба;101;;МЧС;;
 Количество можно задать аргументом: `gradlew.bat sampleCsv 50000`.
 Файл генерируется и в репозиторий не попадает (см. `.gitignore`).
 
+## Сериализация (лабораторная №3)
+
+Справочник можно сохранять и читать не только в CSV, но и в двух форматах через
+общий интерфейс `ru.litper.persistence.serialize.Serializer`:
+
+| Формат | Расширение | Реализация | Особенности |
+|---|---|---|---|
+| JSON | `.json` | `JsonContactSerializer` (Jackson) | с отступами, удобно читать глазами |
+| Бинарный | `.bin` | `BinaryContactSerializer` (свой формат) | компактнее, начинается с метки `LITP` |
+
+В GUI за это отвечают кнопки **«Экспорт»** и **«Импорт»**: открывается `FileChooser`
+с фильтрами `*.json` и `*.bin`, формат определяется по расширению. После импорта
+обновляются таблица и визуализация дерева. Операции идут в фоне через `Task`, чтобы
+не блокировать интерфейс.
+
+### Модель файла
+
+Перед записью контакты превращаются в плоские записи `ContactRecord` (те же поля, что
+и в CSV) и складываются в `ContactData` вместе с версией схемы `schemaVersion`.
+
+```json
+{
+  "schemaVersion" : 1,
+  "contacts" : [ {
+    "type" : "corporate",
+    "name" : "Иван Иванов",
+    "phone" : "+79990000000",
+    "email" : "ivan@example.com",
+    "organization" : "ООО Ромашка",
+    "position" : "Инженер",
+    "internalNumber" : "123"
+  } ]
+}
+```
+
+Бинарный файл: 4 байта метки `LITP`, 4 байта версии, 4 байта числа записей, далее
+семь строк каждой записи. Метка и версия проверяются при чтении — чужой или
+повреждённый файл даёт понятную ошибку `SerializationException`, а не «мусор» в таблице.
+
+Версия схемы пишется в оба формата (задел на миграции в лабораторной №4).
+
+### Сравнение форматов
+
+`gradlew.bat serializationBench` (10 000 контактов, среднее из 5 прогонов):
+
+| Формат | Размер файла | Сохранение | Загрузка |
+|---|---|---|---|
+| JSON | 2 583 623 байт | 76.27 мс | 55.61 мс |
+| бинарный | 1 153 588 байт | 31.10 мс | 33.76 мс |
+
+Выводы (цифры зависят от машины):
+
+* бинарный формат примерно в 2,2 раза компактнее и быстрее (сохранение — примерно
+  в 2,4 раза, загрузка — примерно в 1,7 раза): он хранит строки без имён полей
+  и лишних символов;
+* JSON проигрывает в размере, но его можно открыть и прочитать текстовым редактором —
+  это важно для отладки и обмена данными;
+* оба формата дают одинаковый результат после roundtrip (`load(save(x)) == x`).
+
 ## Модель
 
 ```text
 Contact
 ├── EmergencyContact       // read-only, появляется только из CSV
 └── CorporateContact       // implements Editable (должность, внутренний номер)
-```
-
-`Editable` — контракт «сущность можно изменять» с методом `validate()`.
+````Editable` — контракт «сущность можно изменять» с методом `validate()`.
 Кнопка «Изменить» в GUI активна только для `CorporateContact`; через «Добавить»
 создаётся только корпоративный контакт.
 
@@ -209,6 +273,8 @@ src/main/java/ru/litper/
   model/        Contact, EmergencyContact, CorporateContact, Editable, ContactType
   structure/    Trie, TrieNode, KeyExtractor — собственное префиксное дерево
   persistence/  CsvLoader (чтение + прогресс + пропуск битых строк), CsvWriter, ошибки разбора
+    serialize/  Serializer, JsonContactSerializer, BinaryContactSerializer,
+                ContactData, ContactRecord, ContactSerializers, SerializationException
   service/      ContactService (хранилище на Trie), ContactGenerator (генерация + отмена)
   gui/          MainApp, MainController, TriePanel (Canvas-визуализация),
                 TaskRunner (Task + прогресс + отмена), ContactDialog
@@ -217,8 +283,11 @@ src/test/java/
   structure/    TrieTest, TriePrefixOpsTest, TrieTraceTest, TrieConcurrencyTest,
                 TrieBenchmark, RaceDemo
   service/      ContactServiceTest, ContactGeneratorTest
-  persistence/  CsvLoaderTest, CsvWriterTest
+  persistence/  CsvLoaderTest, CsvWriterTest, SampleDataWriter
+    serialize/  JsonContactSerializerTest, BinaryContactSerializerTest,
+                ContactDataTest, ContactSerializersTest, SerializationBench
   model/        CorporateContactTest, EmergencyContactTest
+src/test/resources/  contacts.csv, broken-contacts.csv, contacts.json — эталоны для тестов
 data/           contacts.csv — пример данных
 ```
 
@@ -226,5 +295,6 @@ data/           contacts.csv — пример данных
 
 - Java 21+/25
 - Gradle (Kotlin DSL) + Gradle Wrapper
-- JavaFX 25 (OpenJFX), `javafx.concurrent.Task`, `Canvas`
+- JavaFX 25 (OpenJFX), `javafx.concurrent.Task`, `Canvas`, `FileChooser`
+- Jackson Databind 2.18 (JSON), собственный бинарный формат
 - JUnit 5
