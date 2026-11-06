@@ -5,6 +5,7 @@ import org.junit.jupiter.api.io.TempDir;
 import ru.litper.model.Contact;
 import ru.litper.model.CorporateContact;
 import ru.litper.model.EmergencyContact;
+import ru.litper.persistence.migration.ContactMigration;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -13,8 +14,11 @@ import java.nio.file.Path;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * JSON-формат справочника: roundtrip, чтение эталонного файла, битые данные.
@@ -26,7 +30,7 @@ class JsonContactSerializerTest {
     private static ContactData sample() {
         return ContactData.of(new Contact[]{
                 new CorporateContact("Иван Иванов", "+79990000000", "ivan@example.com",
-                        "ООО Ромашка", "Инженер", "123"),
+                        "ООО Ромашка", "Инженер", "123", "Главный контакт", "работа,важный"),
                 new EmergencyContact("Пожарная служба", "101", "", "МЧС")
         });
     }
@@ -121,7 +125,7 @@ class JsonContactSerializerTest {
         Files.writeString(dir.resolve("bad-type.json"),
                 """
                 {
-                  "schemaVersion" : 1,
+                  "schema_version" : 3,
                   "contacts" : [ {
                     "type" : "boss",
                     "name" : "Вася",
@@ -129,7 +133,9 @@ class JsonContactSerializerTest {
                     "email" : "",
                     "organization" : "",
                     "position" : "",
-                    "internalNumber" : ""
+                    "internalNumber" : "",
+                    "note" : "",
+                    "tags" : ""
                   } ]
                 }
                 """, StandardCharsets.UTF_8);
@@ -138,6 +144,78 @@ class JsonContactSerializerTest {
                 () -> serializer.load(dir.resolve("bad-type.json")).toContacts());
 
         assertEquals("Неизвестный тип контакта: boss", error.getMessage());
+    }
+
+    @Test
+    void saveWritesSnakeCaseVersionField(@TempDir Path dir) throws IOException {
+        Path file = dir.resolve("version.json");
+
+        serializer.save(sample(), file);
+
+        String json = Files.readString(file, StandardCharsets.UTF_8);
+        assertTrue(json.contains("\"schema_version\""));
+        assertFalse(json.contains("\"schemaVersion\""));
+    }
+
+    @Test
+    void loadsV1FixtureWithoutNewFields() throws Exception {
+        Path file = writeToTemp(getClass().getResourceAsStream("/contacts-v1.json"), "json");
+
+        ContactData loaded = serializer.load(file);
+        Contact[] contacts = new ContactMigration().migrate(loaded).toContacts();
+
+        assertEquals(1, loaded.schemaVersion());
+        assertNull(loaded.contacts()[0].note());
+        assertNull(loaded.contacts()[0].tags());
+        assertEquals("", contacts[0].getNote());
+        assertEquals("", contacts[0].getTags());
+    }
+
+    @Test
+    void loadsV2FixtureAndKeepsNote() throws Exception {
+        Path file = writeToTemp(getClass().getResourceAsStream("/contacts-v2.json"), "json");
+
+        ContactData loaded = serializer.load(file);
+        Contact[] contacts = new ContactMigration().migrate(loaded).toContacts();
+
+        assertEquals(2, loaded.schemaVersion());
+        assertEquals("Главный контакт", loaded.contacts()[0].note());
+        assertNull(loaded.contacts()[0].tags());
+        assertEquals("Главный контакт", contacts[0].getNote());
+        assertEquals("", contacts[0].getTags());
+    }
+
+    @Test
+    void loadsLegacyCamelCaseVersion(@TempDir Path dir) throws IOException {
+        Path file = dir.resolve("legacy.json");
+        Files.writeString(file, """
+                {
+                  "schemaVersion" : 1,
+                  "contacts" : [ {
+                    "type" : "emergency",
+                    "name" : "Пожарная",
+                    "phone" : "101"
+                  } ]
+                }
+                """, StandardCharsets.UTF_8);
+
+        ContactData loaded = serializer.load(file);
+
+        assertEquals(1, loaded.schemaVersion());
+        assertEquals("Пожарная", loaded.contacts()[0].name());
+    }
+
+    @Test
+    void downgradeToV1DoesNotWriteNewFields(@TempDir Path dir) throws IOException {
+        Path file = dir.resolve("v1.json");
+        ContactData data = sample().forSchemaVersion(SchemaVersion.V1);
+
+        serializer.save(data, file);
+
+        String json = Files.readString(file, StandardCharsets.UTF_8);
+        assertFalse(json.contains("\"note\""));
+        assertFalse(json.contains("\"tags\""));
+        assertEquals(1, serializer.load(file).schemaVersion());
     }
 
     private static Path writeToTemp(java.io.InputStream in, String suffix) throws IOException {

@@ -25,8 +25,9 @@ import java.util.function.LongConsumer;
  */
 public final class CsvLoader {
 
-    private static final int FIELD_COUNT = 7;
-    private static final String HEADER = "type;name;phone;email;organization;position;internalNumber";
+    /** Старые файлы содержат 7 полей, новые — ещё заметку и теги. */
+    private static final int OLD_FIELD_COUNT = 7;
+    private static final int FIELD_COUNT = 9;
 
     /** Как часто сообщать прогресс загрузки (строк). */
     private static final int PROGRESS_STEP = 200;
@@ -38,6 +39,8 @@ public final class CsvLoader {
     private static final int IDX_ORGANIZATION = 4;
     private static final int IDX_POSITION = 5;
     private static final int IDX_INTERNAL_NUMBER = 6;
+    private static final int IDX_NOTE = 7;
+    private static final int IDX_TAGS = 8;
 
     /**
      * Загружает все контакты из файла.
@@ -109,7 +112,7 @@ public final class CsvLoader {
      */
     public Contact parseLine(String line, long lineNumber) throws CsvParseException {
         String[] parts = line.split(";", -1);
-        if (parts.length != FIELD_COUNT) {
+        if (parts.length != OLD_FIELD_COUNT && parts.length != FIELD_COUNT) {
             throw new CsvParseException(CsvErrorCode.WRONG_FIELD_COUNT, lineNumber);
         }
 
@@ -121,19 +124,21 @@ public final class CsvLoader {
         String organization = parts[IDX_ORGANIZATION].trim();
         String position = parts[IDX_POSITION].trim();
         String internalNumber = parts[IDX_INTERNAL_NUMBER].trim();
+        String note = parts.length > IDX_NOTE ? parts[IDX_NOTE].trim() : "";
+        String tags = parts.length > IDX_TAGS ? parts[IDX_TAGS].trim() : "";
 
         if (name.isEmpty() || phone.isEmpty()) {
             throw new CsvParseException(CsvErrorCode.EMPTY_FIELD, lineNumber);
         }
 
         return switch (type) {
-            case EMERGENCY -> new EmergencyContact(name, phone, email, organization);
+            case EMERGENCY -> new EmergencyContact(name, phone, email, organization, note, tags);
             case CORPORATE -> {
                 if (!internalNumber.matches("\\d+")) {
                     throw new CsvParseException(CsvErrorCode.BAD_NUMBER, lineNumber);
                 }
                 yield new CorporateContact(name, phone, email, organization,
-                        position, internalNumber);
+                        position, internalNumber, note, tags);
             }
         };
     }

@@ -13,8 +13,9 @@ import java.nio.file.Path;
  * Собственный бинарный формат справочника.
  *
  * <p>Файл начинается с «магии» (метки формата) и версии, дальше идёт число записей
- * и сами записи: семь строк {@link DataOutputStream#writeUTF(String)}. Метка нужна,
- * чтобы отличить свой файл от произвольного и вежливо сообщить об ошибке.</p>
+ * и сами записи: строки {@link DataOutputStream#writeUTF(String)}, набор которых
+ * зависит от версии схемы. Метка нужна, чтобы отличить свой файл от произвольного
+ * и вежливо сообщить об ошибке.</p>
  */
 public final class BinaryContactSerializer implements Serializer<ContactData> {
 
@@ -39,11 +40,17 @@ public final class BinaryContactSerializer implements Serializer<ContactData> {
 
     @Override
     public void save(ContactData data, Path file) throws IOException {
+        int version = data.schemaVersion();
+        if (!ContactData.isSupportedVersion(version)) {
+            throw new SerializationException("Неподдерживаемая версия файла: " + version);
+        }
         try (DataOutputStream out = new DataOutputStream(
                 new BufferedOutputStream(Files.newOutputStream(file)))) {
             out.writeInt(MAGIC);
-            out.writeInt(data.schemaVersion());
+            out.writeInt(version);
             out.writeInt(data.contacts().length);
+            boolean withNote = version >= SchemaVersion.V2.number();
+            boolean withTags = version >= SchemaVersion.V3.number();
             for (ContactRecord record : data.contacts()) {
                 writeText(out, record.type());
                 writeText(out, record.name());
@@ -52,6 +59,12 @@ public final class BinaryContactSerializer implements Serializer<ContactData> {
                 writeText(out, record.organization());
                 writeText(out, record.position());
                 writeText(out, record.internalNumber());
+                if (withNote) {
+                    writeText(out, record.note());
+                }
+                if (withTags) {
+                    writeText(out, record.tags());
+                }
             }
         } catch (IOException e) {
             throw new SerializationException("Не удалось сохранить бинарный файл: " + e.getMessage(), e);
@@ -66,18 +79,28 @@ public final class BinaryContactSerializer implements Serializer<ContactData> {
                 throw new SerializationException("Файл не является справочником в бинарном формате");
             }
             int version = in.readInt();
-            if (version != ContactData.CURRENT_VERSION) {
+            if (!ContactData.isSupportedVersion(version)) {
                 throw new SerializationException("Неподдерживаемая версия файла: " + version);
             }
             int count = in.readInt();
             if (count < 0 || count > MAX_RECORDS) {
                 throw new SerializationException("Повреждён заголовок файла: неверное число записей");
             }
+            boolean withNote = version >= SchemaVersion.V2.number();
+            boolean withTags = version >= SchemaVersion.V3.number();
             ContactRecord[] records = new ContactRecord[count];
             for (int i = 0; i < count; i++) {
-                records[i] = new ContactRecord(
-                        readText(in), readText(in), readText(in), readText(in),
-                        readText(in), readText(in), readText(in));
+                String type = readText(in);
+                String name = readText(in);
+                String phone = readText(in);
+                String email = readText(in);
+                String organization = readText(in);
+                String position = readText(in);
+                String internalNumber = readText(in);
+                String note = withNote ? readText(in) : null;
+                String tags = withTags ? readText(in) : null;
+                records[i] = new ContactRecord(type, name, phone, email, organization,
+                        position, internalNumber, note, tags);
             }
             return new ContactData(version, records);
         } catch (SerializationException e) {

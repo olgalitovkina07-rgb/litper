@@ -70,8 +70,9 @@ final class TaskRunner {
         });
         task.setOnSucceeded(event -> {
             finish();
-            onSucceeded.run();
+            // Сначала освобождаем интерфейс: onSucceeded может сразу запустить следующий шаг.
             onFinished.run();
+            onSucceeded.run();
         });
         task.setOnFailed(event -> {
             finish();

@@ -6,6 +6,7 @@ import javafx.geometry.Insets;
 import javafx.scene.control.Alert;
 import javafx.scene.control.Button;
 import javafx.scene.control.ButtonType;
+import javafx.scene.control.ChoiceDialog;
 import javafx.scene.control.Label;
 import javafx.scene.control.SplitPane;
 import javafx.scene.control.TableColumn;
@@ -25,8 +26,11 @@ import ru.litper.model.EmergencyContact;
 import ru.litper.persistence.CsvLoadResult;
 import ru.litper.persistence.CsvLoader;
 import ru.litper.persistence.CsvWriter;
+import ru.litper.persistence.migration.ContactMigration;
 import ru.litper.persistence.serialize.ContactData;
 import ru.litper.persistence.serialize.ContactSerializers;
+import ru.litper.persistence.serialize.SchemaVersion;
+import ru.litper.persistence.serialize.SerializationException;
 import ru.litper.persistence.serialize.Serializer;
 import ru.litper.service.ContactGenerator;
 import ru.litper.service.ContactService;
@@ -101,14 +105,14 @@ public class MainController {
         return root;
     }
 
-    // ------------------------------------------------------------------ интерфейс
+    // интерфейс
 
     private HBox buildToolbar() {
         addButton.setTooltip(new Tooltip("Добавить можно только редактируемый тип (корпоративный)"));
         generateButton.setTooltip(new Tooltip("Сгенерировать набор данных для дерева"));
         clearButton.setTooltip(new Tooltip("Полностью очистить дерево"));
-        exportButton.setTooltip(new Tooltip("Экспорт в JSON или бинарный формат (лаб. 3)"));
-        importButton.setTooltip(new Tooltip("Импорт из JSON или бинарного формата (лаб. 3)"));
+        exportButton.setTooltip(new Tooltip("Экспорт в JSON или бинарный формат с выбором версии схемы"));
+        importButton.setTooltip(new Tooltip("Импорт из JSON или бинарного формата, старые версии мигрируются"));
 
         loadButton.setOnAction(e -> onLoadCsv());
         saveButton.setOnAction(e -> onSaveCsv());
@@ -138,6 +142,8 @@ public class MainController {
         table.getColumns().add(column("Организация", Contact::getOrganization));
         table.getColumns().add(column("Должность", MainController::positionOf));
         table.getColumns().add(column("Внутр. номер", MainController::internalNumberOf));
+        table.getColumns().add(column("Заметка", Contact::getNote));
+        table.getColumns().add(column("Теги", Contact::getTags));
         table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
         table.setPlaceholder(new Label("Контактов нет. Загрузите CSV, сгенерируйте или добавьте контакт."));
 
@@ -193,7 +199,7 @@ public class MainController {
         };
     }
 
-    // ------------------------------------------------------------------ работа с данными (лаб. 1)
+    // работа с данными (лаб. 1)
 
     private void onLoadCsv() {
         File file = chooseFile("Загрузить CSV", false);
@@ -233,7 +239,7 @@ public class MainController {
                 setStatus("Сохранено контактов: " + task.getValue()));
     }
 
-    // экспорт и импорт (лаб. 3)
+    // экспорт и импорт (лаб. 3–4)
 
     private void onExport() {
         FileChooser chooser = buildDataChooser("Экспорт справочника", JSON_FILTER, BINARY_FILTER);
@@ -242,19 +248,29 @@ public class MainController {
             return;
         }
         Serializer<ContactData> serializer = serializerFor(chooser.getSelectedExtensionFilter());
-        Path target = withExtension(file.toPath(), serializer.fileExtension());
+        SchemaVersion version = chooseSchemaVersion();
+        if (version == null) {
+            return;
+        }
+        if (version != SchemaVersion.CURRENT
+                && !confirm("При экспорте в схему " + version.number()
+                        + " будут потеряны " + version.lostFields() + ". Продолжить?")) {
+            return;
+        }
 
+        Path target = withExtension(file.toPath(), serializer.fileExtension());
         Task<Integer> task = new Task<>() {
             @Override
             protected Integer call() throws Exception {
                 Contact[] contacts = service.getAll();
-                serializer.save(ContactData.of(contacts), target);
+                ContactData data = ContactData.of(contacts).forSchemaVersion(version);
+                serializer.save(data, target);
                 return contacts.length;
             }
         };
         runInBackground(task, "Ошибка экспорта", () ->
-                setStatus("Экспортировано в " + serializer.format() + ": "
-                        + task.getValue() + " контактов (" + target.getFileName() + ")"));
+                setStatus("Экспортировано в " + serializer.format() + " (схема " + version.number()
+                        + "): " + task.getValue() + " контактов (" + target.getFileName() + ")"));
     }
 
     private void onImport() {
@@ -265,20 +281,74 @@ public class MainController {
         }
         Serializer<ContactData> serializer = ContactSerializers.forFile(file.toPath());
 
-        Task<Contact[]> task = new Task<>() {
+        Task<ContactData> loadTask = new Task<>() {
             @Override
-            protected Contact[] call() throws Exception {
-                return serializer.load(file.toPath()).toContacts();
+            protected ContactData call() throws Exception {
+                return serializer.load(file.toPath());
             }
         };
-        runInBackground(task, "Ошибка импорта", () -> {
-            Contact[] contacts = task.getValue();
-            service.replaceAll(contacts);
-            triePanel.setPrefix("");
-            triePanel.setSuggestions(new String[0]);
-            refreshAll();
-            setStatus("Импортировано из " + serializer.format() + ": " + contacts.length + " контактов");
-        });
+        runInBackground(loadTask, "Ошибка импорта",
+                () -> applyImported(serializer, loadTask.getValue()));
+    }
+
+    private void applyImported(Serializer<ContactData> serializer, ContactData loaded) {
+        int version = loaded.schemaVersion();
+        if (!ContactData.isSupportedVersion(version)) {
+            showError("Ошибка импорта", new SerializationException(
+                    "Неподдерживаемая версия файла: " + version));
+            return;
+        }
+
+        boolean needsMigration = version != ContactData.CURRENT_VERSION;
+        if (needsMigration && !confirmMigration(version)) {
+            setStatus("Импорт отменён: файл версии " + version + " не мигрирован");
+            return;
+        }
+
+        Task<Contact[]> importTask = new Task<>() {
+            @Override
+            protected Contact[] call() throws Exception {
+                ContactData data = needsMigration
+                        ? new ContactMigration().migrate(loaded)
+                        : loaded;
+                return data.toContacts();
+            }
+        };
+        runInBackground(importTask,
+                needsMigration ? "Ошибка миграции" : "Ошибка импорта",
+                () -> {
+                    Contact[] contacts = importTask.getValue();
+                    service.replaceAll(contacts);
+                    triePanel.setPrefix("");
+                    triePanel.setSuggestions(new String[0]);
+                    refreshAll();
+                    String suffix = needsMigration
+                            ? ", миграция " + version + " → " + ContactData.CURRENT_VERSION
+                            : "";
+                    setStatus("Импортировано из " + serializer.format() + ": "
+                            + contacts.length + " контактов" + suffix);
+                });
+    }
+
+    private boolean confirmMigration(int fromVersion) {
+        Alert alert = new Alert(Alert.AlertType.CONFIRMATION);
+        alert.initOwner(root.getScene().getWindow());
+        alert.setTitle("Миграция данных");
+        alert.setHeaderText("Файл версии " + fromVersion + ". Мигрировать до "
+                + ContactData.CURRENT_VERSION + "?");
+        alert.setContentText(ContactMigration.describe(fromVersion));
+        alert.getButtonTypes().setAll(ButtonType.OK, ButtonType.CANCEL);
+        return alert.showAndWait().map(button -> button == ButtonType.OK).orElse(false);
+    }
+
+    private SchemaVersion chooseSchemaVersion() {
+        ChoiceDialog<SchemaVersion> dialog = new ChoiceDialog<>(
+                SchemaVersion.CURRENT, SchemaVersion.values());
+        dialog.initOwner(root.getScene().getWindow());
+        dialog.setTitle("Версия схемы");
+        dialog.setHeaderText("В какую версию схемы сохранить файл?");
+        dialog.setContentText("Версия:");
+        return dialog.showAndWait().orElse(null);
     }
 
     private static FileChooser buildDataChooser(String title, FileChooser.ExtensionFilter... filters) {
@@ -328,7 +398,7 @@ public class MainController {
         });
     }
 
-    // ------------------------------------------------------------------ операции над деревом (лаб. 2)
+    // операции над деревом (лаб. 2)
 
     private void onGenerate() {
         Optional<String> answer = askGenerateCount();
@@ -443,7 +513,7 @@ public class MainController {
         setStatus("Удалено по префиксу «" + prefix + "»: " + removed);
     }
 
-    // ------------------------------------------------------------------ обновление интерфейса
+    // обновление интерфейса
 
     private void refreshAll() {
         refreshTable();
@@ -480,7 +550,7 @@ public class MainController {
         statusLabel.setText(text);
     }
 
-    // ------------------------------------------------------------------ вспомогательное
+    // вспомогательное
 
     /** Любая тяжёлая операция — в фоне, интерфейс не блокируется. */
     private void runInBackground(Task<?> task, String errorTitle, Runnable onSucceeded) {

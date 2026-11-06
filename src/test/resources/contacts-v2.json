@@ -1,0 +1,13 @@
+{
+  "schema_version" : 2,
+  "contacts" : [ {
+    "type" : "corporate",
+    "name" : "Иван Иванов",
+    "phone" : "+79990000000",
+    "email" : "ivan@example.com",
+    "organization" : "ООО Ромашка",
+    "position" : "Инженер",
+    "internalNumber" : "123",
+    "note" : "Главный контакт"
+  } ]
+}

@@ -13,7 +13,6 @@ import java.nio.file.Path;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class CsvWriterTest {
 
@@ -22,7 +21,7 @@ class CsvWriterTest {
         Path file = dir.resolve("roundtrip.csv");
         Contact[] contacts = {
                 new CorporateContact("Иван Иванов", "+7999", "i@e.ru",
-                        "ООО Ромашка", "Инженер", "123"),
+                        "ООО Ромашка", "Инженер", "123", "Важный клиент", "работа,важный"),
                 new EmergencyContact("Пожарная служба", "101", "", "МЧС")
         };
 
@@ -32,6 +31,8 @@ class CsvWriterTest {
         assertEquals(2, result.contacts().length);
         assertEquals(0, result.skippedLines());
         assertEquals("Иван Иванов", result.contacts()[0].getName());
+        assertEquals("Важный клиент", result.contacts()[0].getNote());
+        assertEquals("работа,важный", result.contacts()[0].getTags());
         assertEquals("Пожарная служба", result.contacts()[1].getName());
     }
 
@@ -43,6 +44,6 @@ class CsvWriterTest {
         List<String> lines = Files.readAllLines(file, StandardCharsets.UTF_8);
         String header = lines.get(0);
 
-        assertTrue(header.startsWith("type;name;phone;email;organization;position;internalNumber"));
+        assertEquals("type;name;phone;email;organization;position;internalNumber;note;tags", header);
     }
 }

@@ -17,7 +17,8 @@ import java.nio.file.Path;
  */
 public final class CsvWriter {
 
-    private static final String HEADER = "type;name;phone;email;organization;position;internalNumber";
+    private static final String HEADER =
+            "type;name;phone;email;organization;position;internalNumber;note;tags";
 
     public void write(Path file, Contact[] contacts) throws IOException {
         try (BufferedWriter writer = Files.newBufferedWriter(file, StandardCharsets.UTF_8)) {
@@ -39,7 +40,9 @@ public final class CsvWriter {
                     corporate.getEmail(),
                     corporate.getOrganization(),
                     corporate.getPosition(),
-                    corporate.getInternalNumber());
+                    corporate.getInternalNumber(),
+                    corporate.getNote(),
+                    corporate.getTags());
         }
         if (contact instanceof EmergencyContact emergency) {
             return join(
@@ -49,7 +52,9 @@ public final class CsvWriter {
                     emergency.getEmail(),
                     emergency.getOrganization(),
                     "",
-                    "");
+                    "",
+                    emergency.getNote(),
+                    emergency.getTags());
         }
         throw new IllegalArgumentException("Неизвестный тип контакта: " + contact.getClass());
     }

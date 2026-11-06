@@ -36,6 +36,8 @@ public final class ContactDialog {
     private final TextField organizationField = new TextField();
     private final TextField positionField = new TextField();
     private final TextField internalNumberField = new TextField();
+    private final TextField noteField = new TextField();
+    private final TextField tagsField = new TextField();
 
     private CorporateContact result;
 
@@ -54,6 +56,8 @@ public final class ContactDialog {
             organizationField.setText(existing.getOrganization());
             positionField.setText(existing.getPosition());
             internalNumberField.setText(existing.getInternalNumber());
+            noteField.setText(existing.getNote());
+            tagsField.setText(existing.getTags());
         }
 
         GridPane grid = new GridPane();
@@ -67,6 +71,8 @@ public final class ContactDialog {
         grid.addRow(4, new Label("Организация:"), organizationField);
         grid.addRow(5, new Label("Должность:"), positionField);
         grid.addRow(6, new Label("Внутр. номер:"), internalNumberField);
+        grid.addRow(7, new Label("Заметка:"), noteField);
+        grid.addRow(8, new Label("Теги:"), tagsField);
         dialog.getDialogPane().setContent(grid);
 
         Button okButton = (Button) dialog.getDialogPane().lookupButton(ButtonType.OK);
@@ -83,7 +89,9 @@ public final class ContactDialog {
                 emailField.getText().trim(),
                 organizationField.getText().trim(),
                 positionField.getText().trim(),
-                internalNumberField.getText().trim());
+                internalNumberField.getText().trim(),
+                noteField.getText().trim(),
+                tagsField.getText().trim());
 
         List<String> errors = candidate.validate();
         if (errors.isEmpty()) {

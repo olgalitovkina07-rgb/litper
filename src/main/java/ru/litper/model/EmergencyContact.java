@@ -11,4 +11,9 @@ public class EmergencyContact extends Contact {
     public EmergencyContact(String name, String phone, String email, String organization) {
         super(name, phone, email, organization);
     }
+
+    public EmergencyContact(String name, String phone, String email, String organization,
+                            String note, String tags) {
+        super(name, phone, email, organization, note, tags);
+    }
 }

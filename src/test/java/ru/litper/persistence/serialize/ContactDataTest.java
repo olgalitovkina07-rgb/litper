@@ -7,6 +7,7 @@ import ru.litper.model.EmergencyContact;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 /**
@@ -86,6 +87,54 @@ class ContactDataTest {
 
         assertEquals("", contact.getEmail());
         assertEquals("", contact.getOrganization());
+    }
+
+    @Test
+    void corporateNoteAndTagsAreStored() {
+        Contact contact = new CorporateContact("Иван", "+7", "", "", "Инженер", "123",
+                "Важный клиент", "работа,важный");
+
+        ContactRecord record = ContactRecord.of(contact);
+
+        assertEquals("Важный клиент", record.note());
+        assertEquals("работа,важный", record.tags());
+    }
+
+    @Test
+    void recordRestoresNoteAndTags() throws SerializationException {
+        ContactRecord record = new ContactRecord("corporate", "Иван", "+7",
+                "", "", "Инженер", "123", "заметка", "тег");
+
+        Contact contact = record.toContact();
+
+        assertEquals("заметка", contact.getNote());
+        assertEquals("тег", contact.getTags());
+    }
+
+    @Test
+    void exportToV1ClearsNewFields() {
+        ContactData current = ContactData.of(new Contact[]{
+                new CorporateContact("Иван", "+7", "", "", "Инженер", "123", "заметка", "тег")
+        });
+
+        ContactData v1 = current.forSchemaVersion(SchemaVersion.V1);
+
+        assertEquals(1, v1.schemaVersion());
+        assertNull(v1.contacts()[0].note());
+        assertNull(v1.contacts()[0].tags());
+    }
+
+    @Test
+    void exportToV2KeepsNoteButClearsTags() {
+        ContactData current = ContactData.of(new Contact[]{
+                new CorporateContact("Иван", "+7", "", "", "Инженер", "123", "заметка", "тег")
+        });
+
+        ContactData v2 = current.forSchemaVersion(SchemaVersion.V2);
+
+        assertEquals(2, v2.schemaVersion());
+        assertEquals("заметка", v2.contacts()[0].note());
+        assertNull(v2.contacts()[0].tags());
     }
 
     @Test

@@ -1,5 +1,6 @@
 package ru.litper.persistence.serialize;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import ru.litper.model.Contact;
 import ru.litper.model.ContactType;
 import ru.litper.model.CorporateContact;
@@ -12,6 +13,7 @@ import ru.litper.model.EmergencyContact;
  * хранят одинаковый набор данных. Полиморфизм модели разворачивается в поле
  * {@code type}, лишние для аварийного контакта поля пишутся пустыми строками.</p>
  */
+@JsonInclude(JsonInclude.Include.NON_NULL)
 public record ContactRecord(
         String type,
         String name,
@@ -19,9 +21,17 @@ public record ContactRecord(
         String email,
         String organization,
         String position,
-        String internalNumber) {
+        String internalNumber,
+        String note,
+        String tags) {
 
     private static final String EMPTY = "";
+
+    /** Старый формат записи без новых полей — нужен для совместимости и тестов. */
+    public ContactRecord(String type, String name, String phone, String email,
+                         String organization, String position, String internalNumber) {
+        this(type, name, phone, email, organization, position, internalNumber, EMPTY, EMPTY);
+    }
 
     /** Превращает контакт модели в запись для файла. */
     public static ContactRecord of(Contact contact) {
@@ -33,7 +43,9 @@ public record ContactRecord(
                     corporate.getEmail(),
                     corporate.getOrganization(),
                     corporate.getPosition(),
-                    corporate.getInternalNumber());
+                    corporate.getInternalNumber(),
+                    corporate.getNote(),
+                    corporate.getTags());
         }
         if (contact instanceof EmergencyContact emergency) {
             return new ContactRecord(
@@ -43,7 +55,9 @@ public record ContactRecord(
                     emergency.getEmail(),
                     emergency.getOrganization(),
                     EMPTY,
-                    EMPTY);
+                    EMPTY,
+                    emergency.getNote(),
+                    emergency.getTags());
         }
         throw new IllegalArgumentException("Неизвестный тип контакта: " + contact.getClass());
     }
@@ -69,11 +83,14 @@ public record ContactRecord(
 
         String contactEmail = orEmpty(email);
         String contactOrganization = orEmpty(organization);
+        String contactNote = orEmpty(note);
+        String contactTags = orEmpty(tags);
         return switch (parsedType) {
-            case EMERGENCY -> new EmergencyContact(contactName, contactPhone, contactEmail, contactOrganization);
+            case EMERGENCY -> new EmergencyContact(contactName, contactPhone, contactEmail,
+                    contactOrganization, contactNote, contactTags);
             case CORPORATE -> new CorporateContact(
                     contactName, contactPhone, contactEmail, contactOrganization,
-                    orEmpty(position), orEmpty(internalNumber));
+                    orEmpty(position), orEmpty(internalNumber), contactNote, contactTags);
         };
     }
 

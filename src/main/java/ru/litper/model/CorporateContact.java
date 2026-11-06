@@ -16,7 +16,13 @@ public class CorporateContact extends Contact implements Editable {
 
     public CorporateContact(String name, String phone, String email,
                             String organization, String position, String internalNumber) {
-        super(name, phone, email, organization);
+        this(name, phone, email, organization, position, internalNumber, "", "");
+    }
+
+    public CorporateContact(String name, String phone, String email,
+                            String organization, String position, String internalNumber,
+                            String note, String tags) {
+        super(name, phone, email, organization, note, tags);
         this.position = position;
         this.internalNumber = internalNumber;
     }

@@ -16,11 +16,14 @@ import javafx.scene.layout.Region;
 import javafx.scene.layout.VBox;
 import javafx.scene.paint.Color;
 import javafx.scene.text.Font;
+import javafx.scene.text.Text;
 import ru.litper.model.Contact;
 import ru.litper.structure.Trie;
 import ru.litper.structure.TrieNode;
 
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
 import java.util.Locale;
 
 /**
@@ -63,6 +66,9 @@ public class TriePanel extends VBox {
     private static final double NODE_RADIUS = 15;
     private static final double MIN_CANVAS_WIDTH = 260;
     private static final double MIN_CANVAS_HEIGHT = 200;
+
+    private static final String EMPTY_MESSAGE =
+            "Дерево пусто — добавьте, загрузите или сгенерируйте контакты";
 
     private static final Color EDGE_COLOR = Color.web("#bdc1c6");
     private static final Color NODE_FILL = Color.web("#ffffff");
@@ -282,7 +288,7 @@ public class TriePanel extends VBox {
 
         if (trie.isEmpty()) {
             g.setFill(TEXT_COLOR);
-            g.fillText("Дерево пусто — добавьте, загрузите или сгенерируйте контакты", MARGIN, MARGIN);
+            drawEmptyMessage(g, width);
             updateStats(trie.nodeCount(), trie.size(), contactsInSubtree, focusPrefix, focus);
             return;
         }
@@ -291,6 +297,37 @@ public class TriePanel extends VBox {
             drawNode(g, views[i]);
         }
         updateStats(trie.nodeCount(), trie.size(), contactsInSubtree, focusPrefix, focus);
+    }
+
+    private void drawEmptyMessage(GraphicsContext g, double width) {
+        double maxWidth = Math.max(width - 2 * MARGIN, 80);
+        Text measure = new Text();
+        measure.setFont(g.getFont());
+
+        List<String> lines = new ArrayList<>();
+        StringBuilder current = new StringBuilder();
+        for (String word : EMPTY_MESSAGE.split(" ")) {
+            String candidate = current.length() == 0 ? word : current + " " + word;
+            measure.setText(candidate);
+            if (current.length() == 0 || measure.getLayoutBounds().getWidth() <= maxWidth) {
+                current.setLength(0);
+                current.append(candidate);
+            } else {
+                lines.add(current.toString());
+                current.setLength(0);
+                current.append(word);
+            }
+        }
+        if (current.length() > 0) {
+            lines.add(current.toString());
+        }
+
+        double lineHeight = g.getFont().getSize() * 1.45;
+        double y = MARGIN;
+        for (String line : lines) {
+            g.fillText(line, MARGIN, y);
+            y += lineHeight;
+        }
     }
 
     private void drawEdges(GraphicsContext g) {

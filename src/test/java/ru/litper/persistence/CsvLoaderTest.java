@@ -64,6 +64,19 @@ class CsvLoaderTest {
         assertEquals("+79990000000", corporate.getPhone());
         assertEquals("Инженер", corporate.getPosition());
         assertEquals("123", corporate.getInternalNumber());
+        assertEquals("", corporate.getNote());
+        assertEquals("", corporate.getTags());
+    }
+
+    @Test
+    void parsesLineWithNoteAndTags() throws Exception {
+        Contact contact = loader.parseLine(
+                "corporate;Иван Иванов;+79990000000;ivan@example.com;ООО Ромашка;Инженер;123;Важный клиент;работа,важный",
+                2);
+
+        CorporateContact corporate = assertInstanceOf(CorporateContact.class, contact);
+        assertEquals("Важный клиент", corporate.getNote());
+        assertEquals("работа,важный", corporate.getTags());
     }
 
     @Test
@@ -117,6 +130,23 @@ class CsvLoaderTest {
         assertEquals(2, result.skippedLines());
         assertInstanceOf(CorporateContact.class, result.contacts()[0]);
         assertInstanceOf(EmergencyContact.class, result.contacts()[1]);
+    }
+
+    @Test
+    void loadsOldAndNewRowsTogether(@TempDir Path dir) throws IOException {
+        Path file = dir.resolve("mixed.csv");
+        Files.write(file, List.of(
+                HEADER,
+                "corporate;Старый;+7;e;o;p;123",
+                "corporate;Новый;+7;e;o;p;456;заметка;тег"
+        ), StandardCharsets.UTF_8);
+
+        CsvLoadResult result = loader.load(file);
+
+        assertEquals(2, result.contacts().length);
+        assertEquals("", result.contacts()[0].getNote());
+        assertEquals("заметка", result.contacts()[1].getNote());
+        assertEquals("тег", result.contacts()[1].getTags());
     }
 
     @Test

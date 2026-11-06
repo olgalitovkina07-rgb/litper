@@ -5,7 +5,9 @@ import org.junit.jupiter.api.io.TempDir;
 import ru.litper.model.Contact;
 import ru.litper.model.CorporateContact;
 import ru.litper.model.EmergencyContact;
+import ru.litper.persistence.migration.ContactMigration;
 
+import java.io.DataOutputStream;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.file.Files;
@@ -15,6 +17,7 @@ import java.util.Arrays;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 /**
@@ -27,7 +30,7 @@ class BinaryContactSerializerTest {
     private static ContactData sample() {
         return ContactData.of(new Contact[]{
                 new CorporateContact("Иван Иванов", "+79990000000", "ivan@example.com",
-                        "ООО Ромашка", "Инженер", "123"),
+                        "ООО Ромашка", "Инженер", "123", "Главный контакт", "работа,важный"),
                 new EmergencyContact("Пожарная служба", "101", "", "МЧС")
         });
     }
@@ -113,6 +116,60 @@ class BinaryContactSerializerTest {
                 assertThrows(SerializationException.class, () -> serializer.load(file));
 
         assertEquals("Неподдерживаемая версия файла: 99", error.getMessage());
+    }
+
+    @Test
+    void loadsVersion1FileWithoutNewFields(@TempDir Path dir) throws IOException {
+        Path file = dir.resolve("v1.bin");
+        try (DataOutputStream out = new DataOutputStream(Files.newOutputStream(file))) {
+            out.writeInt(0x4C495450);
+            out.writeInt(1);
+            out.writeInt(1);
+            out.writeUTF("corporate");
+            out.writeUTF("Иван Иванов");
+            out.writeUTF("+79990000000");
+            out.writeUTF("ivan@example.com");
+            out.writeUTF("ООО Ромашка");
+            out.writeUTF("Инженер");
+            out.writeUTF("123");
+        }
+
+        ContactData loaded = serializer.load(file);
+        ContactData migrated = new ContactMigration().migrate(loaded);
+
+        assertEquals(1, loaded.schemaVersion());
+        assertNull(loaded.contacts()[0].note());
+        assertNull(loaded.contacts()[0].tags());
+        assertEquals("", migrated.contacts()[0].note());
+        assertEquals("", migrated.contacts()[0].tags());
+    }
+
+    @Test
+    void savesV1WithoutNewFields(@TempDir Path dir) throws IOException {
+        Path file = dir.resolve("v1-saved.bin");
+
+        serializer.save(sample().forSchemaVersion(SchemaVersion.V1), file);
+        ContactData loaded = serializer.load(file);
+
+        assertEquals(1, loaded.schemaVersion());
+        assertEquals("Иван Иванов", loaded.contacts()[0].name());
+        assertNull(loaded.contacts()[0].note());
+        assertNull(loaded.contacts()[0].tags());
+    }
+
+    @Test
+    void savesV2WithNoteOnly(@TempDir Path dir) throws IOException {
+        Path file = dir.resolve("v2-saved.bin");
+        ContactRecord record = new ContactRecord("corporate", "Иван", "+7",
+                "", "", "Инженер", "123", "заметка", "тег");
+        ContactData v2 = new ContactData(2, new ContactRecord[]{record});
+
+        serializer.save(v2, file);
+        ContactData loaded = serializer.load(file);
+
+        assertEquals(2, loaded.schemaVersion());
+        assertEquals("заметка", loaded.contacts()[0].note());
+        assertNull(loaded.contacts()[0].tags());
     }
 
     @Test
