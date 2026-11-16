@@ -1,6 +1,7 @@
 plugins {
     java
     application
+    id("org.springframework.boot") version "3.5.16"
 }
 
 group = "ru.litper"
@@ -11,7 +12,7 @@ repositories {
 }
 
 val javafxVersion = "25.0.2"
-val jacksonVersion = "2.18.2"
+val springBootVersion = "3.5.16"
 
 val osName = System.getProperty("os.name").lowercase()
 val javafxPlatform = when {
@@ -22,30 +23,46 @@ val javafxPlatform = when {
 }
 
 dependencies {
+    implementation(platform("org.springframework.boot:spring-boot-dependencies:$springBootVersion"))
+
     implementation("org.openjfx:javafx-base:$javafxVersion:$javafxPlatform")
     implementation("org.openjfx:javafx-graphics:$javafxVersion:$javafxPlatform")
     implementation("org.openjfx:javafx-controls:$javafxVersion:$javafxPlatform")
 
-    implementation("com.fasterxml.jackson.core:jackson-databind:$jacksonVersion")
+    implementation("org.springframework.boot:spring-boot-starter-web")
+    implementation("org.springframework.boot:spring-boot-starter-validation")
+    implementation("com.fasterxml.jackson.core:jackson-databind")
 
-    testImplementation(platform("org.junit:junit-bom:5.11.4"))
-    testImplementation("org.junit.jupiter:junit-jupiter")
+    testImplementation("org.springframework.boot:spring-boot-starter-test")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
 
 java {
-    modularity.inferModulePath.set(true)
+    modularity.inferModulePath.set(false)
 }
 
 application {
     mainClass = "ru.litper.Main"
-    mainModule = "ru.litper"
-    // Отключаем предупреждение о нативном доступе из модуля JavaFX.
-    applicationDefaultJvmArgs = listOf("--enable-native-access=javafx.graphics")
+    applicationDefaultJvmArgs = listOf("--enable-native-access=ALL-UNNAMED")
+}
+
+springBoot {
+    mainClass = "ru.litper.Main"
 }
 
 tasks.test {
     useJUnitPlatform()
+}
+
+/**
+ * Только REST-сервер, без JavaFX — удобно проверять API через curl.
+ * Запуск: gradlew.bat serverRun
+ */
+tasks.register<JavaExec>("serverRun") {
+    group = "application"
+    description = "Запускает Spring Boot-сервер без JavaFX"
+    classpath = sourceSets["main"].runtimeClasspath
+    mainClass = "ru.litper.server.ServerApp"
 }
 
 /**

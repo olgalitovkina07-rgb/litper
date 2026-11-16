@@ -1,12 +1,13 @@
 # Справочник контактов
 
-Лабораторные работы №1–4, **вариант 4 «Справочник контактов»**.
+Лабораторные работы №1–5, **вариант 4 «Справочник контактов»**.
 
 JavaFX-приложение для ведения справочника контактов: загрузка и сохранение CSV,
 отображение в таблице, добавление и редактирование контактов, **собственное
 префиксное дерево (Trie) по имени** с визуализацией и асинхронными операциями,
-**экспорт и импорт в JSON и собственный бинарный формат**, а также
-**версионирование схемы и миграции данных**.
+**экспорт и импорт в JSON и бинарный формат на `java.io.Serializable`**,
+**версионирование схемы и миграции данных**, а также **Spring Boot REST API**,
+который работает в одном процессе с GUI.
 
 ## Требования
 
@@ -18,6 +19,17 @@ JavaFX-приложение для ведения справочника кон�
 ```bash
 ./gradlew run          # macOS/Linux
 gradlew.bat run        # Windows
+```
+
+Команда запускает JavaFX и Spring Boot в одном JVM. После старта GUI сервер
+доступен на `http://localhost:8080`, REST API — на
+`http://localhost:8080/api/contacts`. Альтернативный запуск:
+`gradlew.bat bootRun`.
+
+Только сервер без GUI (для проверки запросов):
+
+```bash
+gradlew.bat serverRun
 ```
 
 Сборка и тесты:
@@ -41,11 +53,11 @@ gradlew.bat serializationBench # сравнение JSON и бинарного �
 
 Проект также можно открыть и запустить в IntelliJ IDEA: `Main.java` → «Run».
 Нужная VM-опция уже прописана в `.idea/runConfigurations/Main.xml`
-(`--enable-native-access=javafx.graphics`).
+(`--enable-native-access=ALL-UNNAMED`).
 
 > Если при запуске появляется предупреждение про `System::load` / native access —
 > добавь в Run Configuration (Run → Edit Configurations → VM options):
-> `--enable-native-access=javafx.graphics`
+> `--enable-native-access=ALL-UNNAMED`
 
 ## Что умеет приложение
 
@@ -64,11 +76,14 @@ gradlew.bat serializationBench # сравнение JSON и бинарного �
 | Поля «заметка» и «теги», версии схемы 1–3 | №4 |
 | Миграция старых файлов v1 → v2 → v3 с диалогом подтверждения | №4 |
 | Экспорт в v1/v2 с предупреждением о потере новых полей | №4 |
+| Spring Boot REST API: CRUD, фильтры, поиск, экспорт/импорт | №5 |
+| GUI и сервер в одном процессе, автоматическое обновление после API | №5 |
 
-Кнопки: «Загрузить CSV», «Сохранить CSV», «Экспорт», «Импорт», «Добавить»,
-«Изменить», «Сгенерировать», «Очистить», «Отменить» + прогресс-бар.
+Кнопки: «Загрузить CSV», «Сохранить CSV», «Обновить», «Экспорт», «Импорт»,
+«Добавить», «Изменить», «Сгенерировать», «Очистить», «Отменить» + прогресс-бар.
 При экспорте открывается выбор версии схемы; при импорте старого файла —
-диалог миграции.
+диалог миграции. Кнопка «Обновить» перечитывает данные из общего сервиса,
+а после изменения через REST API таблица и дерево обновляются автоматически.
 
 Правая панель — визуализация дерева: поле префикса, кнопки «Найти»,
 «Удалить по имени», «Удалить по префиксу», список подсказок автодополнения,
@@ -124,7 +139,7 @@ emergency;Пожарная служба;101;;МЧС;;;;;
 | Формат | Расширение | Реализация | Особенности |
 |---|---|---|---|
 | JSON | `.json` | `JsonContactSerializer` (Jackson) | с отступами, удобно читать глазами |
-| Бинарный | `.bin` | `BinaryContactSerializer` (свой формат) | компактнее, начинается с метки `LITP` |
+| Бинарный | `.bin` | `BinaryContactSerializer` (`ObjectOutputStream`) | компактнее, поток Java-сериализации с версией в заголовке |
 
 В GUI за это отвечают кнопки **«Экспорт»** и **«Импорт»**: открывается `FileChooser`
 с фильтрами `*.json` и `*.bin`, формат определяется по расширению. После импорта
@@ -153,9 +168,10 @@ emergency;Пожарная служба;101;;МЧС;;;;;
 }
 ```
 
-Бинарный файл: 4 байта метки `LITP`, 4 байта версии, 4 байта числа записей, далее
-строки каждой записи (7 полей в v1, 8 в v2, 9 в v3). Метка и версия проверяются
-при чтении — чужой или повреждённый файл даёт понятную ошибку
+Бинарный файл — поток Java-сериализации (`ObjectOutputStream`). В начале идёт
+служебный заголовок `AC ED 00 05`, затем класс `ContactBookFile` с меткой `LITP`,
+версией схемы и массивом записей. Метка и версия проверяются в кастомном
+`readObject` — чужой или повреждённый файл даёт понятную ошибку
 `SerializationException`, а не «мусор» в таблице.
 
 Версия схемы пишется в оба формата. Старое имя поля `schemaVersion` в JSON тоже
@@ -167,14 +183,14 @@ emergency;Пожарная служба;101;;МЧС;;;;;
 
 | Формат | Размер файла | Сохранение | Загрузка |
 |---|---|---|---|
-| JSON | 2 943 624 байт | 40.26 мс | 55.64 мс |
-| бинарный | 1 193 588 байт | 17.25 мс | 22.00 мс |
+| JSON | 2 943 624 байт | 58.78 мс | 98.24 мс |
+| бинарный | 1 020 593 байт | 55.23 мс | 54.89 мс |
 
 Выводы (цифры зависят от машины):
 
-* бинарный формат примерно в 2,5 раза компактнее и быстрее (сохранение — примерно
-  в 2,3 раза, загрузка — примерно в 2,5 раза): он хранит строки без имён полей
-  и лишних символов;
+* бинарный формат примерно в 2,9 раза компактнее и читается примерно в 1,8 раза
+  быстрее, а сохранение по времени сопоставимо: Java-сериализация хранит строки
+  без имён полей и форматирования JSON;
 * JSON проигрывает в размере, но его можно открыть и прочитать текстовым редактором —
   это важно для отладки и обмена данными;
 * оба формата дают одинаковый результат после roundtrip (`load(save(x)) == x`).
@@ -210,8 +226,85 @@ v1 → v2 добавляет заметку, v2 → v3 добавляет тег
 | 1 | заметки и теги |
 
 Перед сохранением в старую версию GUI предупреждает о потере полей. В JSON
-недоступные для выбранной версии поля не пишутся, в бинарном формате — не
-записываются соответствующие строки.
+недоступные для выбранной версии поля не пишутся, в бинарном формате перед
+сериализацией очищаются (`null`), а при импорте миграция заполняет их `""`.
+
+## REST API (лабораторная №5)
+
+Spring Boot поднимается в `MainApp.init()` на порту `8080`. В `start()` GUI
+получает из контекста тот же бин `ContactService`, что и контроллеры, поэтому
+запросы к API и кнопки интерфейса меняют одно хранилище. GUI подписан на
+`ContactChangeListener` и обновляет таблицу и дерево через `Platform.runLater`
+после изменения данных через API.
+
+ID контактов — runtime-идентификаторы сервиса. Они не добавляются в CSV/JSON,
+поэтому старые файлы и формат лабораторных №3–4 не меняются.
+
+### Endpoints
+
+| Метод | Путь | Назначение |
+|---|---|---|
+| `GET` | `/api/contacts` | фильтры `name`, `organization`, `type`, `phone`, `email`, `note`, `tags` |
+| `GET` | `/api/contacts/{id}` | один контакт |
+| `POST` | `/api/contacts` | создать, ответ `201` + `Location` |
+| `PUT` | `/api/contacts/{id}` | изменить только `Editable`, иначе `422` |
+| `DELETE` | `/api/contacts/{id}` | удалить, ответ `204` |
+| `GET` | `/api/contacts/search?prefix=иван&limit=50` | автодополнение по префиксу |
+| `GET` | `/api/contacts/count?prefix=иван` | число контактов в поддереве |
+| `POST` | `/api/export?format=json\|bin` | файл справочника в ответе |
+| `POST` | `/api/import?format=json\|bin` | импорт из тела запроса, старые версии мигрируются |
+
+Фильтры необязательны и сравниваются без учёта регистра. `limit` ограничен
+значением `200`. Дубликатом считается совпадение имени и телефона.
+
+### Ошибки
+
+Все ошибки возвращаются в формате ProblemDetail (RFC 9457) с полями `title`,
+`detail`, `status`; ошибки валидации дополнительно содержат массив `errors`.
+
+| Код | Когда |
+|---|---|
+| `400` | ошибка валидации, некорректный числовой параметр, неизвестный тип/формат, повреждённый файл |
+| `404` | контакт с таким ID не найден |
+| `409` | дубликат имя+телефон или файл новее текущей версии схемы |
+| `422` | `PUT` для read-only `EmergencyContact` |
+| `500` | непредвиденная ошибка сервера |
+
+### Примеры curl
+
+```bash
+# список и фильтр
+curl "http://localhost:8080/api/contacts"
+curl "http://localhost:8080/api/contacts?type=corporate&name=иван"
+
+# создание
+curl -i -X POST http://localhost:8080/api/contacts \
+  -H "Content-Type: application/json" \
+  -d '{"type":"corporate","name":"Иван Иванов","phone":"+79990000000",
+       "email":"ivan@example.com","organization":"ООО Ромашка",
+       "position":"Инженер","internalNumber":"123","note":"","tags":"работа"}'
+
+# изменение
+curl -i -X PUT http://localhost:8080/api/contacts/1 \
+  -H "Content-Type: application/json" \
+  -d '{"type":"corporate","name":"Иван Петров","phone":"+79990000001",
+       "position":"Ведущий инженер","internalNumber":"456"}'
+
+# поиск и подсчёт
+curl "http://localhost:8080/api/contacts/search?prefix=иван&limit=10"
+curl "http://localhost:8080/api/contacts/count?prefix=иван"
+
+# удаление
+curl -i -X DELETE http://localhost:8080/api/contacts/1
+
+# экспорт и импорт
+curl -X POST "http://localhost:8080/api/export?format=json" -o contacts.json
+curl -X POST "http://localhost:8080/api/import?format=json" \
+  -H "Content-Type: application/octet-stream" --data-binary "@contacts.json"
+```
+
+После `POST`, `PUT`, `DELETE` или импорта через API открытое GUI само
+перерисовывает данные — вручную нажимать «Обновить» не нужно.
 
 ## Модель
 
@@ -219,7 +312,9 @@ v1 → v2 добавляет заметку, v2 → v3 добавляет тег
 Contact
 ├── EmergencyContact       // read-only, появляется только из CSV
 └── CorporateContact       // implements Editable (должность, внутренний номер)
-````Editable` — контракт «сущность можно изменять» с методом `validate()`.
+```
+
+`Editable` — контракт «сущность можно изменять» с методом `validate()`.
 Кнопка «Изменить» в GUI активна только для `CorporateContact`; через «Добавить»
 создаётся только корпоративный контакт. Поля `note` и `tags` есть у всех
 контактов, но редактировать их через диалог можно только у корпоративного типа.
@@ -323,21 +418,31 @@ src/main/java/ru/litper/
   structure/    Trie, TrieNode, KeyExtractor — собственное префиксное дерево
   persistence/  CsvLoader (чтение + прогресс + пропуск битых строк), CsvWriter, ошибки разбора
     serialize/  Serializer, JsonContactSerializer, BinaryContactSerializer,
-                ContactData, ContactRecord, SchemaVersion, ContactSerializers,
-                SerializationException
+                ContactBookFile, ContactData, ContactRecord, SchemaVersion,
+                ContactSerializers, SerializationException,
+                NewerSchemaVersionException
     migration/  ContactMigration (пошаговые миграции v1 → v2 → v3)
-  service/      ContactService (хранилище на Trie), ContactGenerator (генерация + отмена)
+  service/      ContactService (хранилище на Trie, ID, слушатели),
+                ContactGenerator (генерация + отмена), DuplicateContactException
+  server/       ServerApp (Spring Boot)
+    controller/ ContactController, DataController
+    service/    ContactApiService (DTO, фильтры, экспорт/импорт)
+    dto/        ContactRequest, ContactResponse, ContactFilter, CountResponse,
+                ImportResponse, ExportedData
+    error/      ApiExceptionHandler, доменные исключения REST
   gui/          MainApp, MainController, TriePanel (Canvas-визуализация),
                 TaskRunner (Task + прогресс + отмена), ContactDialog
   Main.java     точка входа
+src/main/resources/ application.properties (порт 8080)
 src/test/java/
   structure/    TrieTest, TriePrefixOpsTest, TrieTraceTest, TrieConcurrencyTest,
                 TrieBenchmark, RaceDemo
-  service/      ContactServiceTest, ContactGeneratorTest
+  service/      ContactServiceTest, ContactServiceApiTest, ContactGeneratorTest
   persistence/  CsvLoaderTest, CsvWriterTest, SampleDataWriter
     serialize/  JsonContactSerializerTest, BinaryContactSerializerTest,
                 ContactDataTest, ContactSerializersTest, SerializationBench
     migration/  ContactMigrationTest
+  server/       ContactApiTest (MockMvc: CRUD, фильтры, ошибки, экспорт/импорт)
   model/        CorporateContactTest, EmergencyContactTest
 src/test/resources/  contacts.csv, broken-contacts.csv, contacts.json,
                      contacts-v1.json, contacts-v2.json, contacts-future-version.json
@@ -349,5 +454,6 @@ data/           contacts.csv — пример данных
 - Java 21+/25
 - Gradle (Kotlin DSL) + Gradle Wrapper
 - JavaFX 25 (OpenJFX), `javafx.concurrent.Task`, `Canvas`, `FileChooser`
-- Jackson Databind 2.18 (JSON), собственный бинарный формат
-- JUnit 5
+- Spring Boot 3.5.16: Spring Web MVC, Jakarta Validation, встроенный Tomcat
+- Jackson Databind (JSON), `java.io.Serializable` (бинарный формат)
+- JUnit 5, MockMvc, AssertJ

@@ -3,6 +3,7 @@ package ru.litper.persistence.migration;
 import ru.litper.model.ContactType;
 import ru.litper.persistence.serialize.ContactData;
 import ru.litper.persistence.serialize.ContactRecord;
+import ru.litper.persistence.serialize.NewerSchemaVersionException;
 import ru.litper.persistence.serialize.SchemaVersion;
 import ru.litper.persistence.serialize.SerializationException;
 
@@ -29,7 +30,10 @@ public final class ContactMigration {
         }
 
         int version = data.schemaVersion();
-        if (!ContactData.isSupportedVersion(version)) {
+        if (version > ContactData.CURRENT_VERSION) {
+            throw new NewerSchemaVersionException(version);
+        }
+        if (version < ContactData.MIN_VERSION) {
             throw new SerializationException("Неподдерживаемая версия файла: " + version);
         }
 

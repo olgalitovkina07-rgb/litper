@@ -1,5 +1,6 @@
 package ru.litper.gui;
 
+import javafx.application.Platform;
 import javafx.beans.property.ReadOnlyStringWrapper;
 import javafx.concurrent.Task;
 import javafx.geometry.Insets;
@@ -73,6 +74,7 @@ public class MainController {
 
     private final Button loadButton = new Button("Загрузить CSV");
     private final Button saveButton = new Button("Сохранить CSV");
+    private final Button refreshButton = new Button("Обновить");
     private final Button exportButton = new Button("Экспорт");
     private final Button importButton = new Button("Импорт");
     private final Button addButton = new Button("Добавить");
@@ -97,7 +99,9 @@ public class MainController {
                     }
                 });
         updateEditButton(null);
+        service.addChangeListener(() -> Platform.runLater(this::refreshAll));
         refreshAll();
+        setStatus("REST API: http://localhost:8080/api/contacts");
     }
 
     /** Корневая панель окна (для сцены). */
@@ -111,11 +115,13 @@ public class MainController {
         addButton.setTooltip(new Tooltip("Добавить можно только редактируемый тип (корпоративный)"));
         generateButton.setTooltip(new Tooltip("Сгенерировать набор данных для дерева"));
         clearButton.setTooltip(new Tooltip("Полностью очистить дерево"));
+        refreshButton.setTooltip(new Tooltip("Перечитать данные из общего сервиса после запросов к REST API"));
         exportButton.setTooltip(new Tooltip("Экспорт в JSON или бинарный формат с выбором версии схемы"));
         importButton.setTooltip(new Tooltip("Импорт из JSON или бинарного формата, старые версии мигрируются"));
 
         loadButton.setOnAction(e -> onLoadCsv());
         saveButton.setOnAction(e -> onSaveCsv());
+        refreshButton.setOnAction(e -> onRefresh());
         exportButton.setOnAction(e -> onExport());
         importButton.setOnAction(e -> onImport());
         addButton.setOnAction(e -> onAddContact());
@@ -126,7 +132,7 @@ public class MainController {
         HBox spacer = new HBox();
         HBox.setHgrow(spacer, Priority.ALWAYS);
 
-        HBox toolbar = new HBox(8, loadButton, saveButton, exportButton, importButton,
+        HBox toolbar = new HBox(8, loadButton, saveButton, refreshButton, exportButton, importButton,
                 addButton, editButton, generateButton, clearButton, spacer,
                 taskRunner.getProgressBar(), taskRunner.getCancelButton());
         toolbar.setPadding(new Insets(10));
@@ -237,6 +243,11 @@ public class MainController {
         };
         runInBackground(task, "Ошибка сохранения CSV", () ->
                 setStatus("Сохранено контактов: " + task.getValue()));
+    }
+
+    private void onRefresh() {
+        refreshAll();
+        setStatus("Данные обновлены. REST API: http://localhost:8080/api/contacts");
     }
 
     // экспорт и импорт (лаб. 3–4)
@@ -538,6 +549,7 @@ public class MainController {
     private void setBusy(boolean busy) {
         loadButton.setDisable(busy);
         saveButton.setDisable(busy);
+        refreshButton.setDisable(busy);
         exportButton.setDisable(busy);
         importButton.setDisable(busy);
         addButton.setDisable(busy);
