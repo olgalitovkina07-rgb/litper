@@ -55,7 +55,10 @@ public final class JsonContactSerializer implements Serializer<ContactData> {
         }
 
         int version = readVersion(root);
-        if (!ContactData.isSupportedVersion(version)) {
+        if (version > ContactData.CURRENT_VERSION) {
+            throw new NewerSchemaVersionException(version);
+        }
+        if (version < ContactData.MIN_VERSION) {
             throw new SerializationException("Неподдерживаемая версия файла: " + version);
         }
 

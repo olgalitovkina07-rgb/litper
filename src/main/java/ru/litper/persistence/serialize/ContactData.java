@@ -4,6 +4,8 @@ import com.fasterxml.jackson.annotation.JsonAlias;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import ru.litper.model.Contact;
 
+import java.io.Serializable;
+
 /**
  * Содержимое файла справочника: версия схемы и список контактов.
  *
@@ -13,7 +15,9 @@ import ru.litper.model.Contact;
  */
 public record ContactData(
         @JsonProperty("schema_version") @JsonAlias("schemaVersion") int schemaVersion,
-        ContactRecord[] contacts) {
+        ContactRecord[] contacts) implements Serializable {
+
+    private static final long serialVersionUID = 1L;
 
     public static final int MIN_VERSION = SchemaVersion.MIN.number();
 

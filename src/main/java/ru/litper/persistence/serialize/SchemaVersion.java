@@ -26,6 +26,16 @@ public enum SchemaVersion {
         this.lostFields = lostFields;
     }
 
+    /** Ищет версию по номеру из заголовка файла. */
+    public static SchemaVersion of(int number) {
+        for (SchemaVersion version : values()) {
+            if (version.number == number) {
+                return version;
+            }
+        }
+        throw new IllegalArgumentException("Неизвестная версия схемы: " + number);
+    }
+
     public int number() {
         return number;
     }

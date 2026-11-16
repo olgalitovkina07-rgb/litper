@@ -6,12 +6,17 @@ import ru.litper.model.ContactType;
 import ru.litper.model.CorporateContact;
 import ru.litper.model.EmergencyContact;
 
+import java.io.Serializable;
+
 /**
  * Плоское представление контакта для сериализации.
  *
  * <p>Поля те же, что и в CSV: так JSON остаётся читаемым «глазами», а оба формата
  * хранят одинаковый набор данных. Полиморфизм модели разворачивается в поле
  * {@code type}, лишние для аварийного контакта поля пишутся пустыми строками.</p>
+ *
+ * <p>Реализует {@link Serializable}, чтобы запись можно было сохранить в бинарный
+ * файл через {@link java.io.ObjectOutputStream}.</p>
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public record ContactRecord(
@@ -23,7 +28,9 @@ public record ContactRecord(
         String position,
         String internalNumber,
         String note,
-        String tags) {
+        String tags) implements Serializable {
+
+    private static final long serialVersionUID = 1L;
 
     private static final String EMPTY = "";
 

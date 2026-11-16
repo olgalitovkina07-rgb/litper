@@ -7,9 +7,8 @@ import ru.litper.model.CorporateContact;
 import ru.litper.model.EmergencyContact;
 import ru.litper.persistence.migration.ContactMigration;
 
-import java.io.DataOutputStream;
 import java.io.IOException;
-import java.nio.ByteBuffer;
+import java.io.ObjectOutputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Arrays;
@@ -21,7 +20,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 /**
- * Собственный бинарный формат: roundtrip и защита от файлов не того формата.
+ * Бинарный формат на java.io.Serializable: roundtrip, версии и защита от чужих файлов.
  */
 class BinaryContactSerializerTest {
 
@@ -75,6 +74,17 @@ class BinaryContactSerializerTest {
     }
 
     @Test
+    void fileIsRealBinaryAndStartsWithJavaSerializationMagic(@TempDir Path dir) throws IOException {
+        Path file = dir.resolve("magic.bin");
+
+        serializer.save(sample(), file);
+        byte[] bytes = Files.readAllBytes(file);
+
+        assertEquals((byte) 0xAC, bytes[0]);
+        assertEquals((byte) 0xED, bytes[1]);
+    }
+
+    @Test
     void loadMissingFileFails(@TempDir Path dir) {
         Path missing = dir.resolve("нет-такого.bin");
 
@@ -82,9 +92,22 @@ class BinaryContactSerializerTest {
     }
 
     @Test
-    void loadRejectsForeignFileWithoutMagic(@TempDir Path dir) throws IOException {
+    void loadRejectsForeignFileWithoutStreamHeader(@TempDir Path dir) throws IOException {
         Path file = dir.resolve("foreign.bin");
         Files.write(file, "это не справочник".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+
+        SerializationException error =
+                assertThrows(SerializationException.class, () -> serializer.load(file));
+
+        assertEquals("Файл не является справочником в бинарном формате", error.getMessage());
+    }
+
+    @Test
+    void loadRejectsSerializedObjectOfAnotherType(@TempDir Path dir) throws IOException {
+        Path file = dir.resolve("other-object.bin");
+        try (ObjectOutputStream out = new ObjectOutputStream(Files.newOutputStream(file))) {
+            out.writeObject("это не справочник");
+        }
 
         SerializationException error =
                 assertThrows(SerializationException.class, () -> serializer.load(file));
@@ -105,12 +128,9 @@ class BinaryContactSerializerTest {
     @Test
     void loadRejectsUnsupportedVersion(@TempDir Path dir) throws IOException {
         Path file = dir.resolve("wrong-version.bin");
-        serializer.save(sample(), file);
-
-        byte[] all = Files.readAllBytes(file);
-        // первые 4 байта — метка формата, следующие 4 — версия схемы
-        ByteBuffer.wrap(all).putInt(4, 99);
-        Files.write(file, all);
+        try (ObjectOutputStream out = new ObjectOutputStream(Files.newOutputStream(file))) {
+            out.writeObject(new ContactBookFile(99, sample().contacts()));
+        }
 
         SerializationException error =
                 assertThrows(SerializationException.class, () -> serializer.load(file));
@@ -119,21 +139,23 @@ class BinaryContactSerializerTest {
     }
 
     @Test
-    void loadsVersion1FileWithoutNewFields(@TempDir Path dir) throws IOException {
-        Path file = dir.resolve("v1.bin");
-        try (DataOutputStream out = new DataOutputStream(Files.newOutputStream(file))) {
-            out.writeInt(0x4C495450);
-            out.writeInt(1);
-            out.writeInt(1);
-            out.writeUTF("corporate");
-            out.writeUTF("Иван Иванов");
-            out.writeUTF("+79990000000");
-            out.writeUTF("ivan@example.com");
-            out.writeUTF("ООО Ромашка");
-            out.writeUTF("Инженер");
-            out.writeUTF("123");
+    void loadRejectsFileWithoutContactList(@TempDir Path dir) throws IOException {
+        Path file = dir.resolve("no-contacts.bin");
+        try (ObjectOutputStream out = new ObjectOutputStream(Files.newOutputStream(file))) {
+            out.writeObject(new ContactBookFile(ContactData.CURRENT_VERSION, null));
         }
 
+        SerializationException error =
+                assertThrows(SerializationException.class, () -> serializer.load(file));
+
+        assertEquals("Повреждён бинарный файл: нет списка контактов", error.getMessage());
+    }
+
+    @Test
+    void loadsVersion1FileWithoutNewFields(@TempDir Path dir) throws IOException {
+        Path file = dir.resolve("v1.bin");
+
+        serializer.save(sample().forSchemaVersion(SchemaVersion.V1), file);
         ContactData loaded = serializer.load(file);
         ContactData migrated = new ContactMigration().migrate(loaded);
 
@@ -170,20 +192,5 @@ class BinaryContactSerializerTest {
         assertEquals(2, loaded.schemaVersion());
         assertEquals("заметка", loaded.contacts()[0].note());
         assertNull(loaded.contacts()[0].tags());
-    }
-
-    @Test
-    void loadRejectsNegativeRecordCount(@TempDir Path dir) throws IOException {
-        Path file = dir.resolve("bad-count.bin");
-        serializer.save(sample(), file);
-
-        byte[] all = Files.readAllBytes(file);
-        ByteBuffer.wrap(all).putInt(8, -5);
-        Files.write(file, all);
-
-        SerializationException error =
-                assertThrows(SerializationException.class, () -> serializer.load(file));
-
-        assertEquals("Повреждён заголовок файла: неверное число записей", error.getMessage());
     }
 }
