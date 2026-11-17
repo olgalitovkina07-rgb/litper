@@ -1,13 +1,17 @@
 # Справочник контактов
 
-Лабораторные работы №1–5, **вариант 4 «Справочник контактов»**.
+Лабораторные работы №1–6, **вариант 4 «Справочник контактов»**.
 
-JavaFX-приложение для ведения справочника контактов: загрузка и сохранение CSV,
-отображение в таблице, добавление и редактирование контактов, **собственное
-префиксное дерево (Trie) по имени** с визуализацией и асинхронными операциями,
-**экспорт и импорт в JSON и бинарный формат на `java.io.Serializable`**,
-**версионирование схемы и миграции данных**, а также **Spring Boot REST API**,
-который работает в одном процессе с GUI.
+Проект разделён на два независимых Gradle-приложения:
+
+- `litper-server` — Spring Boot REST API (модель, Trie, CSV/JSON/бинарь, миграции);
+- `litper-client` — JavaFX-клиент, который работает с сервером только по HTTP.
+
+Клиент не зависит от серверных классов: обмен идёт через JSON и DTO.
+
+Корень `litper` — только агрегатор для IDE (`settings.gradle.kts` с `includeBuild`).
+Сборки остаются независимыми: у `litper-server` и `litper-client` свои
+`settings.gradle.kts`, `build.gradle.kts` и Wrapper.
 
 ## Требования
 
@@ -16,30 +20,47 @@ JavaFX-приложение для ведения справочника кон�
 
 ## Запуск
 
-```bash
-./gradlew run          # macOS/Linux
-gradlew.bat run        # Windows
-```
+Проект состоит из двух независимых Gradle-проектов, у каждого свой Wrapper.
 
-Команда запускает JavaFX и Spring Boot в одном JVM. После старта GUI сервер
-доступен на `http://localhost:8080`, REST API — на
-`http://localhost:8080/api/contacts`. Альтернативный запуск:
-`gradlew.bat bootRun`.
-
-Только сервер без GUI (для проверки запросов):
+### Сервер (`litper-server`)
 
 ```bash
-gradlew.bat serverRun
+cd litper-server
+gradlew.bat bootRun        # Windows (или gradlew.bat serverRun)
 ```
 
-Сборка и тесты:
+Сервер поднимается на `http://localhost:8080`, REST API — на
+`http://localhost:8080/api/contacts`.
+
+### Клиент (`litper-client`)
 
 ```bash
-./gradlew build
-./gradlew test
+cd litper-client
+gradlew.bat clientRun      # Windows (или gradlew.bat run)
 ```
 
-Замеры и эксперименты из отчёта:
+Клиент — JavaFX-приложение, подключается к `http://localhost:8080`.
+Сервер должен быть уже запущен.
+
+### Сборка и тесты
+
+```bash
+cd litper-server
+gradlew.bat build
+gradlew.bat test
+
+cd ..\litper-client
+gradlew.bat build
+gradlew.bat test
+```
+
+Из корня можно собрать оба проекта сразу:
+
+```bash
+gradlew.bat buildAll
+```
+
+### Замеры и эксперименты из отчёта (в `litper-server`)
 
 ```bash
 gradlew.bat benchmark          # своё Trie против TreeMap из java.util (10^4 и 10^5)
@@ -50,14 +71,6 @@ gradlew.bat serializationBench # сравнение JSON и бинарного �
 
 Для `serializationBench` число записей задаётся свойством `count`:
 `gradlew.bat serializationBench -Pcount=50000`.
-
-Проект также можно открыть и запустить в IntelliJ IDEA: `Main.java` → «Run».
-Нужная VM-опция уже прописана в `.idea/runConfigurations/Main.xml`
-(`--enable-native-access=ALL-UNNAMED`).
-
-> Если при запуске появляется предупреждение про `System::load` / native access —
-> добавь в Run Configuration (Run → Edit Configurations → VM options):
-> `--enable-native-access=ALL-UNNAMED`
 
 ## Что умеет приложение
 
@@ -229,13 +242,12 @@ v1 → v2 добавляет заметку, v2 → v3 добавляет тег
 недоступные для выбранной версии поля не пишутся, в бинарном формате перед
 сериализацией очищаются (`null`), а при импорте миграция заполняет их `""`.
 
-## REST API (лабораторная №5)
+## REST API (лабораторные №5–6)
 
-Spring Boot поднимается в `MainApp.init()` на порту `8080`. В `start()` GUI
-получает из контекста тот же бин `ContactService`, что и контроллеры, поэтому
-запросы к API и кнопки интерфейса меняют одно хранилище. GUI подписан на
-`ContactChangeListener` и обновляет таблицу и дерево через `Platform.runLater`
-после изменения данных через API.
+Spring Boot-сервер запускается в отдельном проекте `litper-server`
+(`ru.litper.server.ServerApp`) на порту `8080`. Клиент `litper-client` не имеет
+доступа к хранилищу: все операции он выполняет через HTTP API, а затем
+перечитывает снимок данных для таблицы и дерева.
 
 ID контактов — runtime-идентификаторы сервиса. Они не добавляются в CSV/JSON,
 поэтому старые файлы и формат лабораторных №3–4 не меняются.
@@ -251,8 +263,13 @@ ID контактов — runtime-идентификаторы сервиса. �
 | `DELETE` | `/api/contacts/{id}` | удалить, ответ `204` |
 | `GET` | `/api/contacts/search?prefix=иван&limit=50` | автодополнение по префиксу |
 | `GET` | `/api/contacts/count?prefix=иван` | число контактов в поддереве |
-| `POST` | `/api/export?format=json\|bin` | файл справочника в ответе |
-| `POST` | `/api/import?format=json\|bin` | импорт из тела запроса, старые версии мигрируются |
+| `GET` | `/api/contacts/find?name=Иван Иванов` | точный поиск по имени |
+| `POST` | `/api/contacts/generate?count=1000&seed=42` | заменить справочник сгенерированным набором |
+| `POST` | `/api/contacts/clear` | очистить справочник |
+| `DELETE` | `/api/contacts/by-name?name=Иван Иванов` | удалить контакты с точным именем |
+| `DELETE` | `/api/contacts/by-prefix?prefix=ив` | удалить всё поддерево по префиксу |
+| `POST` | `/api/export?format=json\|bin\|csv&version=3` | файл справочника в ответе |
+| `POST` | `/api/import?format=json\|bin\|csv` | импорт из тела запроса, старые версии мигрируются |
 
 Фильтры необязательны и сравниваются без учёта регистра. `limit` ограничен
 значением `200`. Дубликатом считается совпадение имени и телефона.
@@ -303,8 +320,9 @@ curl -X POST "http://localhost:8080/api/import?format=json" \
   -H "Content-Type: application/octet-stream" --data-binary "@contacts.json"
 ```
 
-После `POST`, `PUT`, `DELETE` или импорта через API открытое GUI само
-перерисовывает данные — вручную нажимать «Обновить» не нужно.
+Клиент `litper-client` выполняет эти же запросы через `ApiClient` и после
+изменения перечитывает снимок данных. Кнопка «Обновить» нужна, если данные
+изменил другой клиент или внешний запрос.
 
 ## Модель
 
@@ -412,41 +430,39 @@ Trie с synchronized: ожидалось 20000, получено 20000
 
 ## Структура проекта
 
+Проект разделён на два независимых Gradle-проекта:
+
 ```text
-src/main/java/ru/litper/
-  model/        Contact, EmergencyContact, CorporateContact, Editable, ContactType
-  structure/    Trie, TrieNode, KeyExtractor — собственное префиксное дерево
-  persistence/  CsvLoader (чтение + прогресс + пропуск битых строк), CsvWriter, ошибки разбора
-    serialize/  Serializer, JsonContactSerializer, BinaryContactSerializer,
-                ContactBookFile, ContactData, ContactRecord, SchemaVersion,
-                ContactSerializers, SerializationException,
-                NewerSchemaVersionException
-    migration/  ContactMigration (пошаговые миграции v1 → v2 → v3)
-  service/      ContactService (хранилище на Trie, ID, слушатели),
-                ContactGenerator (генерация + отмена), DuplicateContactException
-  server/       ServerApp (Spring Boot)
-    controller/ ContactController, DataController
-    service/    ContactApiService (DTO, фильтры, экспорт/импорт)
-    dto/        ContactRequest, ContactResponse, ContactFilter, CountResponse,
-                ImportResponse, ExportedData
-    error/      ApiExceptionHandler, доменные исключения REST
-  gui/          MainApp, MainController, TriePanel (Canvas-визуализация),
-                TaskRunner (Task + прогресс + отмена), ContactDialog
-  Main.java     точка входа
-src/main/resources/ application.properties (порт 8080)
-src/test/java/
-  structure/    TrieTest, TriePrefixOpsTest, TrieTraceTest, TrieConcurrencyTest,
-                TrieBenchmark, RaceDemo
-  service/      ContactServiceTest, ContactServiceApiTest, ContactGeneratorTest
-  persistence/  CsvLoaderTest, CsvWriterTest, SampleDataWriter
-    serialize/  JsonContactSerializerTest, BinaryContactSerializerTest,
-                ContactDataTest, ContactSerializersTest, SerializationBench
-    migration/  ContactMigrationTest
-  server/       ContactApiTest (MockMvc: CRUD, фильтры, ошибки, экспорт/импорт)
-  model/        CorporateContactTest, EmergencyContactTest
-src/test/resources/  contacts.csv, broken-contacts.csv, contacts.json,
-                     contacts-v1.json, contacts-v2.json, contacts-future-version.json
-data/           contacts.csv — пример данных
+litper/
+  litper-server/                       # Spring Boot REST API (без GUI)
+    src/main/java/ru/litper/
+      model/        Contact, EmergencyContact, CorporateContact, Editable, ContactType
+      structure/    Trie, TrieNode, KeyExtractor
+      persistence/  CsvLoader, CsvWriter, ошибки разбора
+        serialize/  Serializer, JsonContactSerializer, BinaryContactSerializer,
+                    ContactBookFile, ContactData, ContactRecord, SchemaVersion
+        migration/  ContactMigration (v1 → v2 → v3)
+      service/      ContactService, ContactGenerator, DuplicateContactException
+      server/       ServerApp, controller/, service/, dto/, error/
+    src/main/resources/ application.properties (порт 8080)
+    src/test/java/  model, structure, service, persistence, server
+    src/test/resources/  contacts.csv, broken-contacts.csv, contacts*.json
+    data/           contacts.csv, contacts-large.csv
+
+  litper-client/                       # JavaFX-клиент (REST, GUI из лабораторной №5)
+    src/main/java/ru/litper/
+      model/        Contact, EmergencyContact, CorporateContact, Editable, ContactType
+      structure/    Trie, TrieNode, KeyExtractor (локальное отражение для отрисовки)
+      persistence/serialize/SchemaVersion.java
+      client/
+        ClientMain.java   точка входа
+        api/              ApiClient, HttpApiClient, ApiException
+        dto/              ContactDto, CountDto, GeneratedDto, ImportResultDto, ProblemDto
+        service/          RemoteContactService (снимок данных + локальное дерево)
+        gui/              MainApp, MainController, TriePanel, ContactDialog, TaskRunner
+    src/test/java/ru/litper/client/api/  HttpApiClientTest
+
+  README.md, instruction.md, AGENTS.md, PLAN*.md
 ```
 
 ## Технологии
@@ -457,3 +473,40 @@ data/           contacts.csv — пример данных
 - Spring Boot 3.5.16: Spring Web MVC, Jakarta Validation, встроенный Tomcat
 - Jackson Databind (JSON), `java.io.Serializable` (бинарный формат)
 - JUnit 5, MockMvc, AssertJ
+
+## Лабораторная работа №6 (REST-клиент)
+
+Клиент вынесен в отдельный проект `litper-client` и работает с сервером
+`litper-server` только через HTTP API (`java.net.http.HttpClient`,
+JSON через Jackson). Прямого доступа к `ContactService` или хранилищу у клиента нет.
+
+### Запуск
+
+1. В папке `litper-server`: `gradlew.bat serverRun`
+2. В папке `litper-client`: `gradlew.bat clientRun`
+
+По умолчанию клиент подключается к `http://localhost:8080`. Сервер должен быть
+запущен до выполнения операций в клиенте.
+
+### Возможности клиента
+
+- Интерфейс сохранён как в лабораторной №5: таблица, панель Trie, кнопки
+  «Загрузить CSV», «Сохранить CSV», «Обновить», «Экспорт», «Импорт»,
+  «Добавить», «Изменить», «Сгенерировать», «Очистить», поиск и удаление
+  по имени/префиксу.
+- Все операции выполняются через REST API: CRUD, генерация, очистка,
+  удаление по имени/префиксу, экспорт и импорт (`csv`/`json`/`bin`).
+- Клиент хранит только снимок данных и строит локальное отражение Trie для
+  отрисовки на `Canvas`; источник истины — сервер.
+- Все сетевые операции выполняются в фоне (`Task`) с индикатором и кнопкой
+  отмены, интерфейс не блокируется.
+
+### Обработка сетевых ошибок
+
+- Недоступный сервер / ошибка соединения: показывается понятное сообщение с
+  подсказкой проверить запуск `serverRun`.
+- Ошибки HTTP обрабатываются по ответу ProblemDetail (`400`, `404`, `409`,
+  `422`, `500`) и показываются пользователю в диалоге.
+- Некорректный или неожиданный ответ сервера обрабатывается как ошибка клиента
+  без падения приложения.
+- Это поведение покрыто тестом `HttpApiClientTest` в `litper-client`.

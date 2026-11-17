@@ -36,6 +36,6 @@ bin/
 .DS_Store
 
 ### Сгенерированные большие тестовые данные ###
-# файл создаётся командой gradlew.bat sampleCsv
-data/contacts-large.csv
+# файл создаётся командой gradlew.bat sampleCsv в litper-server
+**/data/contacts-large.csv
 
