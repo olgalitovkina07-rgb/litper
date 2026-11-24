@@ -259,8 +259,9 @@ public class TriePanel extends VBox {
         }
         double firstChildX = 0;
         double lastChildX = 0;
+        int nodeIndex = viewCount - 1;
         for (int i = 0; i < node.childCount() && viewCount < MAX_DRAWN_NODES; i++) {
-            double childX = placeNode(node.child(i), depth + 1, viewCount - 1);
+            double childX = placeNode(node.child(i), depth + 1, nodeIndex);
             if (i == 0) {
                 firstChildX = childX;
             }

@@ -240,9 +240,14 @@ public class HttpApiClient implements ApiClient {
                     detail = null;
                 }
                 return new ApiException(status, title, detail);
-            } catch (IOException ignored) {
+            } catch (IOException e) {
+                return fallbackException(status, body, e);
             }
         }
+        return fallbackException(status, body, null);
+    }
+
+    private ApiException fallbackException(int status, String body, Throwable cause) {
         String title = switch (status) {
             case 400 -> "Неверный запрос";
             case 404 -> "Не найдено";
@@ -251,10 +256,14 @@ public class HttpApiClient implements ApiClient {
             case 500 -> "Ошибка сервера";
             default -> "Ошибка";
         };
-        return new ApiException(status, title, body == null || body.isBlank() ? null : body);
+        String detail = body == null || body.isBlank() ? null : body;
+        return cause == null
+                ? new ApiException(status, title, detail)
+                : new ApiException(status, title, detail, cause);
     }
 
     private static boolean notBlank(String s) {
+
         return s != null && !s.trim().isEmpty();
     }
 

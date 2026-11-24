@@ -39,3 +39,8 @@ bin/
 # файл создаётся командой gradlew.bat sampleCsv в litper-server
 **/data/contacts-large.csv
 
+### Локальные служебные файлы ###
+AGENTS.md
+PLAN*.md
+*.log
+

@@ -16,8 +16,10 @@ import java.net.ServerSocket;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -41,14 +43,19 @@ class HttpApiClientTest {
         }
     }
 
-    private static final String CONTACT_JSON =
-            "[{\"id\":1,\"type\":\"corporate\",\"name\":\"Иван\",\"phone\":\"+7\","
+    private static final String CONTACT_OBJECT_JSON =
+            "{\"id\":1,\"type\":\"corporate\",\"name\":\"Иван\",\"phone\":\"+7\","
                     + "\"email\":\"e\",\"organization\":\"o\",\"position\":\"p\","
-                    + "\"internalNumber\":\"1\",\"note\":\"\",\"tags\":\"\"}]";
+                    + "\"internalNumber\":\"1\",\"note\":\"\",\"tags\":\"\"}";
+    private static final String CONTACT_JSON = "[" + CONTACT_OBJECT_JSON + "]";
 
     private void handle(HttpExchange exchange) throws IOException {
         String path = exchange.getRequestURI().getPath();
-        if ("/api/contacts/count".equals(path)) {
+        String method = exchange.getRequestMethod();
+        String query = exchange.getRequestURI().getQuery();
+        if ("/api/contacts/search".equals(path)) {
+            respond(exchange, 200, CONTACT_JSON);
+        } else if ("/api/contacts/count".equals(path)) {
             respond(exchange, 200, "{\"prefix\":\"Ив\",\"count\":1}");
         } else if ("/api/contacts/find".equals(path)) {
             respond(exchange, 200, CONTACT_JSON);
@@ -60,17 +67,38 @@ class HttpApiClientTest {
                 || "/api/contacts/by-prefix".equals(path)) {
             respond(exchange, 200, "{\"prefix\":\"Ив\",\"count\":1}");
         } else if ("/api/export".equals(path)) {
-            respond(exchange, 200, "csv-data");
+            if ("format=plain".equals(query)) {
+                respond(exchange, 500, "plain error");
+            } else {
+                respond(exchange, 200, "csv-data");
+            }
         } else if ("/api/import".equals(path)) {
             respond(exchange, 200, "{\"format\":\"csv\",\"sourceVersion\":3,"
                     + "\"currentVersion\":3,\"contacts\":1,\"migrated\":false,"
                     + "\"skippedLines\":2}");
+        } else if ("/api/contacts".equals(path) && "POST".equals(method)) {
+            readBody(exchange);
+            respond(exchange, 201, CONTACT_OBJECT_JSON);
+        } else if (path.matches("/api/contacts/\\d+") && "PUT".equals(method)) {
+            readBody(exchange);
+            respond(exchange, 200, CONTACT_OBJECT_JSON);
+        } else if (path.matches("/api/contacts/\\d+") && "DELETE".equals(method)) {
+            respondEmpty(exchange, 204);
         } else if ("/api/contacts".equals(path)) {
             respond(exchange, 200, CONTACT_JSON);
         } else {
             respond(exchange, 404,
                     "{\"title\":\"Не найдено\",\"detail\":\"Нет контакта\",\"status\":404}");
         }
+    }
+
+    private static void readBody(HttpExchange exchange) throws IOException {
+        exchange.getRequestBody().readAllBytes();
+    }
+
+    private static void respondEmpty(HttpExchange exchange, int status) throws IOException {
+        exchange.sendResponseHeaders(status, -1);
+        exchange.close();
     }
 
     private static void respond(HttpExchange exchange, int status, String json) throws IOException {
@@ -160,5 +188,51 @@ class HttpApiClientTest {
         assertEquals(1, result.contacts());
         assertEquals(2, result.skippedLines());
         assertFalse(result.migrated());
+    }
+
+    @Test
+    void createsContactThroughApi() {
+        ContactDto created = new HttpApiClient(baseUrl).create(sampleContact());
+
+        assertEquals(1L, created.id());
+        assertEquals("Иван", created.name());
+    }
+
+    @Test
+    void updatesContactThroughApi() {
+        ContactDto updated = new HttpApiClient(baseUrl).update(1, sampleContact());
+
+        assertEquals(1L, updated.id());
+        assertEquals("p", updated.position());
+    }
+
+    @Test
+    void deletesContactThroughApi() {
+        ApiClient client = new HttpApiClient(baseUrl);
+
+        assertDoesNotThrow(() -> client.delete(1));
+    }
+
+    @Test
+    void searchesContactsByPrefix() {
+        List<ContactDto> found = new HttpApiClient(baseUrl).search("Ив", 10);
+
+        assertEquals(1, found.size());
+        assertEquals("Иван", found.get(0).name());
+    }
+
+    @Test
+    void keepsRawServerErrorWhenProblemDetailIsBroken() {
+        ApiException error = assertThrows(ApiException.class,
+                () -> new HttpApiClient(baseUrl).exportData("plain"));
+
+        assertEquals(500, error.getStatus());
+        assertEquals("plain error", error.getDetail());
+        assertNotNull(error.getCause());
+    }
+
+    private static ContactDto sampleContact() {
+        return new ContactDto(null, "corporate", "Иван", "+7", "e", "o",
+                "Инженер", "1", "", "");
     }
 }

@@ -10,7 +10,7 @@ repositories {
     mavenCentral()
 }
 
-val javafxVersion = "25.0.2"
+val javafxVersion = "21.0.2"
 val jacksonVersion = "2.21.4"
 
 val osName = System.getProperty("os.name").lowercase()
