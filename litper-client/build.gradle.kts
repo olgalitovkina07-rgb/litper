@@ -51,4 +51,5 @@ tasks.register<JavaExec>("clientRun") {
     classpath = sourceSets["main"].runtimeClasspath
     mainClass = "ru.litper.client.ClientMain"
     jvmArgs = listOf("--enable-native-access=ALL-UNNAMED")
+    project.findProperty("baseUrl")?.let {args("--baseUrl=$it")}
 }

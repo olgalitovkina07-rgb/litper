@@ -15,7 +15,7 @@
 
 ## Требования
 
-- JDK 21+ (рекомендуется 25) — проверено на JDK 21
+- JDK 25 (JavaFX 25 требует Java 25)
 - Остальные зависимости подтягивает Gradle Wrapper автоматически
 
 ## Запуск
@@ -29,7 +29,8 @@ cd litper-server
 gradlew.bat bootRun        # Windows (или gradlew.bat serverRun)
 ```
 
-Сервер поднимается на `http://localhost:8080`, REST API — на
+Сервер слушает `0.0.0.0:8080`, поэтому доступен и по `http://localhost:8080`,
+и по локальному IP-адресу ноутбука в Wi-Fi. REST API — на
 `http://localhost:8080/api/contacts`.
 
 ### Клиент (`litper-client`)
@@ -39,8 +40,34 @@ cd litper-client
 gradlew.bat clientRun      # Windows (или gradlew.bat run)
 ```
 
-Клиент — JavaFX-приложение, подключается к `http://localhost:8080`.
-Сервер должен быть уже запущен.
+Клиент — JavaFX-приложение, по умолчанию подключается к
+`http://localhost:8080`. Сервер должен быть уже запущен.
+
+Адрес сервера можно переопределить без изменения кода:
+
+```bash
+gradlew.bat clientRun -PbaseUrl=http://192.168.1.10:8080
+# или через стандартную задачу:
+gradlew.bat run --args="--baseUrl=http://192.168.1.10:8080"
+```
+
+### Демонстрация на двух ноутбуках в одной Wi-Fi сети
+
+1. На первом ноутбуке узнайте локальный IP (`ipconfig`, адрес по Wi-Fi).
+2. На первом ноутбуке запустите сервер: `gradlew.bat serverRun` в `litper-server`.
+3. На первом ноутбуке запустите клиент без параметров:
+   `gradlew.bat clientRun` в `litper-client`.
+4. На втором ноутбуке запустите только клиент с адресом первого ноутбука:
+   `gradlew.bat clientRun -PbaseUrl=http://<IP-первого-ноутбука>:8080`.
+
+IP-адрес в примере нужно заменить на реальный адрес первого ноутбука, а не
+на `localhost`. Если с другого ноутбука подключение не проходит, разрешите
+входящий TCP-порт 8080 в брандмауэре Windows на первом ноутбуке (для частной
+сети). Команда выполняется от имени администратора:
+
+```powershell
+netsh advfirewall firewall add rule name="Litper REST API 8080" dir=in action=allow protocol=TCP localport=8080 profile=private
+```
 
 ### Сборка и тесты
 
@@ -469,7 +496,7 @@ litper/
 
 - Java 21+/25
 - Gradle (Kotlin DSL) + Gradle Wrapper
-- JavaFX 21 (OpenJFX), `javafx.concurrent.Task`, `Canvas`, `FileChooser`
+- JavaFX 25 (OpenJFX), `javafx.concurrent.Task`, `Canvas`, `FileChooser`
 - Spring Boot 3.5.16: Spring Web MVC, Jakarta Validation, встроенный Tomcat
 - Jackson Databind (JSON), `java.io.Serializable` (бинарный формат)
 - JUnit 5, MockMvc, AssertJ
@@ -486,7 +513,9 @@ JSON через Jackson). Прямого доступа к `ContactService` ил
 2. В папке `litper-client`: `gradlew.bat clientRun`
 
 По умолчанию клиент подключается к `http://localhost:8080`. Сервер должен быть
-запущен до выполнения операций в клиенте.
+запущен до выполнения операций в клиенте. Для подключения к серверу на другом
+ноутбуке используйте `gradlew.bat clientRun -PbaseUrl=http://<IP-сервера>:8080`;
+подробности — в разделе «Демонстрация на двух ноутбуках».
 
 ### Возможности клиента
 
@@ -494,11 +523,10 @@ JSON через Jackson). Прямого доступа к `ContactService` ил
   «Загрузить CSV», «Сохранить CSV», «Обновить», «Экспорт», «Импорт»,
   «Добавить», «Изменить», «Сгенерировать», «Очистить», поиск и удаление
   по имени/префиксу.
-- Все операции изменения выполняются через REST API: CRUD, генерация, очистка,
+- Все операции выполняются через REST API: CRUD, генерация, очистка,
   удаление по имени/префиксу, экспорт и импорт (`csv`/`json`/`bin`).
-- Поиск по префиксу/имени и подсчёт также доступны через REST API; клиент дополнительно
-  строит локальное отражение Trie по снимку данных для отрисовки на `Canvas`.
-  Источник истины — сервер.
+- Клиент хранит только снимок данных и строит локальное отражение Trie для
+  отрисовки на `Canvas`; источник истины — сервер.
 - Все сетевые операции выполняются в фоне (`Task`) с индикатором и кнопкой
   отмены, интерфейс не блокируется.
 
